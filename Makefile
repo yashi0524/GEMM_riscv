@@ -33,6 +33,13 @@ TUNING_FLAGS := -O3 \
                 -fno-asynchronous-unwind-tables \
                 -fno-unwind-tables
 
+# Matrix dimensions args:
+# by default M=N=4, user can use -DM to set M=N=K, or use -DM -DN -DK to set seprately
+M :=4
+TUNING_FLAGS += -DM=$(M)
+
+#TUNING_FLAGS += -g -mllvm -force-vector-interleave=4
+
 # --- Linker Flags ---
 # -nostdlib        : suppress all default libs/crt0
 # start.S first    : our _write/_exit win over newlib's
@@ -54,14 +61,14 @@ CFLAGS := $(TARGET_FLAGS) $(SYSROOT_FLAGS) $(TUNING_FLAGS) -I$(INC_DIR)
 TARGET := dgemm_riscv
 SRC    := $(SRC_DIR)/dgemm.c
 
-all: $(TARGET)
+all: $(TARGET) inject_flags
 
 $(TARGET): $(SRC) $(STARTUP) $(LDSCRIPT)
 	$(CC) $(CFLAGS) $(LDFLAGS) \
 	    -o $@ $(STARTUP) $(SRC) \
     -lc -lm -lgcc
 
-clean:
+clean: clean_flags
 	rm -f $(TARGET) $(TARGET).dis
 
 # Disassemble and verify _write uses UART (sb to 0x10000000), not ecall
@@ -71,5 +78,16 @@ dis: $(TARGET)
 	@grep -A 25 "<_write>:" $(TARGET).dis | head -30
 	@echo "=== _exit (should show 0x4200007b) ==="
 	@grep -A 5 "<_exit>:" $(TARGET).dis | head -8
+
+inject_flags:
+	echo -n "$(CFLAGS)" > build_flags.tmp
+	riscv64-unknown-elf-objcopy --add-section .build_flags=build_flags.tmp \
+		--set-section-flags .build_flags=readonly,data \
+		$(TARGET) $(TARGET)_flags
+	rm -f build_flags.tmp
+
+clean_flags:
+	rm $(TARGET)_flags
+
 
 .PHONY: all clean dis

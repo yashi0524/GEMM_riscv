@@ -1,0 +1,14 @@
+{
+    "matrix": {
+        "M": 8, "N": 8, "K": 8
+    },
+    "_llvm": {
+        "dir": "/usr/lib/llvm-14",
+        "version": "14"
+    },
+    "_targets": ["gpu_kernel", "cpu_ref"],
+    "_test": {
+        "tolerance": 1e-5,
+        "iterations": 100
+    }
+}

@@ -1,16 +1,14 @@
-test_pattern=/home/ajno5/work/2_pattern/dgemm/dgemm_riscv
-configuration file=/home/ajno5/work/2_pattern/dgemm/config/whisper_rv64gcv_config.json
-Running normally with: /home/ajno5/work/2_pattern/dgemm/dgemm_riscv
 Config file tag xlen is deprecated: xlen is obtained from the isa tag.
 Warning: Config file tag "enable_performance_counters" deprecated: Add extension string "zicntr" to "isa" tag instead.
 Warning: Write mask of CSR VSTART changed to 0x1ff to be compatible with VLEN=512
 misa = 0x800000000034112D
 Starting Scalar DGEMM...
 
-mcycle = 8795
-inst_count = 8796
+vl = 0x00000008
+counter: mcycle = 8795
+counter: minstret = 8796
 hpmcounter[3]: Vector = 1072
 hpmcounter[4]: VectorLoad = 1056
 hpmcounter[5]: VectorStore = 544
 Info: Target program exited with code 1774128
-Info: Executed 25266 instructions and retired 25266 instructions in 0.01s -- 4886095 inst/s hart=0
+Info: Executed 27384 instructions and retired 27384 instructions in 0.01s -- 2790583 inst/s hart=0
