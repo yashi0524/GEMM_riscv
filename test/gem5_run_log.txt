@@ -6,24 +6,25 @@ src/mem/dram_interface.cc:690: warn: DRAM device capacity (8192 Mbytes) does not
 src/arch/generic/semihosting.cc:130: info: Semihosting: Shifting elapsed ticks by 8 bits.
 src/arch/riscv/isa.cc:321: info: RVV enabled, VLEN = 512 bits, ELEN = 64 bits
 src/base/statistics.hh:279: warn: One of the stats is a legacy stat. Legacy stat is a stat that does not belong to any statistics::Group. Legacy stat is deprecated.
-system.remote_gdb: Listening for connections on port 7000
+src/base/remote_gdb.cc:418: warn: Sockets disabled, not accepting gdb connections
 gem5 Simulator System.  https://www.gem5.org
 gem5 is copyrighted software; use the --copyright option for details.
 
 gem5 version 25.1.0.0
 gem5 compiled Apr 16 2026 01:18:10
-gem5 started Jun 15 2026 02:14:18
-gem5 executing on vmserver, pid 330305
-command line: gem5.opt /home/ajno5/work/2_pattern/dgemm/config/gem5_riscv_demo_riscv_baremetal_semihost.py dgemm_riscv
+gem5 started Jun 22 2026 03:00:54
+gem5 executing on vmserver, pid 376996
+command line: gem5.opt -d /home/ajno5/work/2_pattern/dgemm/test/m5out /home/ajno5/work/2_pattern/dgemm/sim_config/gem5_riscv_demo_riscv_baremetal_semihost.py /home/ajno5/work/2_pattern/dgemm/test/dgemm_riscv
 
+info: Standard input is not a terminal, disabling listeners.
 Starting bare-metal RISC-V M-mode simulation...
 misa = 0x800000000034112D
 Starting Scalar DGEMM...
 
 vl = 0x00000008
-counter: mcycle = 17700
-counter: minstret = 5827
-hpmcounter[3]: Vector = 60614
-hpmcounter[4]: VectorLoad = 60628
-hpmcounter[5]: VectorStore = 60636
-Exit @ tick 92273000: semi:ADP_Stopped_ApplicationExit
+counter: mcycle = 26924
+counter: minstret = 8796
+hpmcounter[3]: Vector = 74836
+hpmcounter[4]: VectorLoad = 74850
+hpmcounter[5]: VectorStore = 74858
+Exit @ tick 106951000: semi:ADP_Stopped_ApplicationExit

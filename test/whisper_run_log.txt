@@ -11,4 +11,4 @@ hpmcounter[3]: Vector = 1072
 hpmcounter[4]: VectorLoad = 1056
 hpmcounter[5]: VectorStore = 544
 Info: Target program exited with code 1774128
-Info: Executed 27384 instructions and retired 27384 instructions in 0.01s -- 2790583 inst/s hart=0
+Info: Executed 27384 instructions and retired 27384 instructions in 0.01s -- 5441971 inst/s hart=0

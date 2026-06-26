@@ -52,7 +52,7 @@
             "path": "system.workload",
             "auto_reset_vect": true,
             "bare_metal": true,
-            "bootloader": "dgemm_riscv",
+            "bootloader": "/home/ajno5/work/2_pattern/dgemm/test/dgemm_riscv",
             "eventq_index": 0,
             "remote_gdb_port": "#7000",
             "reset_vect": 0,

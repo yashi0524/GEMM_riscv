@@ -495,7 +495,7 @@ fontsize=14;
 label="workload \n: RiscvBareMetal";
 shape=box;
 style="rounded, filled";
-tooltip="auto_reset_vect&#61;true&#10;\bare_metal&#61;true&#10;\bootloader&#61;dgemm_riscv&#10;\eventq_index&#61;0&#10;\remote_gdb_port&#61;#7000&#10;\reset_vect&#61;0&#10;\semihosting&#61;system.workload.semihosting&#10;\wait_for_remote_gdb&#61;false";
+tooltip="auto_reset_vect&#61;true&#10;\bare_metal&#61;true&#10;\bootloader&#61;/home/ajno5/work/2_pattern/dgemm/test/dgemm_riscv&#10;\eventq_index&#61;0&#10;\remote_gdb_port&#61;#7000&#10;\reset_vect&#61;0&#10;\semihosting&#61;system.workload.semihosting&#10;\wait_for_remote_gdb&#61;false";
 subgraph cluster_system_workload_semihosting {
 color="#000000";
 fillcolor="#9f9c95";

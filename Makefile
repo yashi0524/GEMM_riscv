@@ -14,6 +14,7 @@ SRC_DIR  := src
 INC_DIR  := inc
 STARTUP  := start_semi.S
 LDSCRIPT := linker_semi.ld
+OUT_DIR  := test
 
 # --- Target Architecture ---
 TARGET_FLAGS := --target=riscv64-unknown-elf \
@@ -58,7 +59,7 @@ LDFLAGS := -L$(LIBC_DIR) \
 CFLAGS := $(TARGET_FLAGS) $(SYSROOT_FLAGS) $(TUNING_FLAGS) -I$(INC_DIR)
 
 # --- Build ---
-TARGET := dgemm_riscv
+TARGET := $(OUT_DIR)/dgemm_riscv
 SRC    := $(SRC_DIR)/dgemm.c
 
 all: $(TARGET) inject_flags
@@ -79,6 +80,7 @@ dis: $(TARGET)
 	@echo "=== _exit (should show 0x4200007b) ==="
 	@grep -A 5 "<_exit>:" $(TARGET).dis | head -8
 
+
 inject_flags:
 	echo -n "$(CFLAGS)" > build_flags.tmp
 	riscv64-unknown-elf-objcopy --add-section .build_flags=build_flags.tmp \
@@ -86,8 +88,11 @@ inject_flags:
 		$(TARGET) $(TARGET)_flags
 	rm -f build_flags.tmp
 
+dump_flags:
+	riscv64-unknown-elf-readelf -p .build_flags $(TARGET)_flags
+
 clean_flags:
-	rm $(TARGET)_flags
+	rm -f $(TARGET)_flags
 
 
 .PHONY: all clean dis

@@ -5,6 +5,7 @@ import re
 
 class sim_log_parser:
     def __init__(self):
+        print("logger init")
         # re.gen
         #gen re_pattern for hpmcounters
         self.hpm_pattern = re.compile(r'hpmcounter\[(?P<idx>[0-9]+)]:\s*(?P<name>[a-zA-Z]+)\s*=\s*(?P<value>[0-9]+)')

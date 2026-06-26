@@ -1,13 +1,13 @@
 # dgemm_riscv run log
 # kernel: scalar DGEMM, C = alpha*A*B + beta*C, M=N=K=16, FP64
-# build:  clang-18, -march=rv64gcv -O3 -mllvm -force-vector-width=4
-# binary: /home/ajno5/work/2_pattern/dgemm/dgemm_riscv
+# build:  clang-18, -march=rv64gcv -O3 -mllvm -force-vector-width=8
+# binary: /home/ajno5/work/2_pattern/dgemm/test/dgemm_riscv
 # note:   all CSR values are kernel-only deltas (READ before/after scalar_dgemm)
 #         except hpmcounterN which are read only at the end (not delta)
 
-# --- whisper (functional simulator, VLEN=512) ---
-# date: 2026-05-07
-# config: /home/ajno5/work/2_pattern/dgemm/config/whisper_rv64gcv_config.json
+# --- whisper (functional simulator, VLEN=512, bytes_per_vec=64) ---
+# date: 2026-06-22
+# config: /home/ajno5/work/2_pattern/dgemm/sim_config/whisper_rv64gcv_config.json
 mcycle          =   8,795
 inst_retired    =   8,796   # minstret CSR delta
 hpmcounter[3]   =   1,072   # Vector      (event 61: vector compute instructions)
@@ -15,9 +15,9 @@ hpmcounter[4]   =   1,056   # VectorLoad  (event 64: vector load instructions)
 hpmcounter[5]   =     544   # VectorStore (event 65: vector store instructions)
 
 # --- gem5 TimingSimpleCPU (cycle-accurate, 1 GHz, 64KB L1 I/D cache, DDR3-1600, VLEN=512) ---
-# date: 2026-05-07
-# config: /home/ajno5/work/2_pattern/dgemm/config/gem5_riscv_demo_riscv_baremetal_semihost.py
-mcycle          =  26,980
+# date: 2026-06-22
+# config: /home/ajno5/work/2_pattern/dgemm/sim_config/gem5_riscv_demo_riscv_baremetal_semihost.py
+mcycle          =  26,924
 minstret        =   8,796   # inst_count CSR delta
 # note: gem5 hpmcounterN values are NOT event counts (TimingSimpleCPU does not
 #       implement HPM events); they reflect raw cycle accumulation from sim start.
