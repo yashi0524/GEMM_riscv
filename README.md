@@ -37,6 +37,11 @@
     IPC           =   0.327   (8,796 / 26,924)
     CPI           =   3.06    (26,924 / 8,796)
 
+    --- FMADD micro-benchmark (peak compute probe, ITERS=10000, vl=8, FP64) ---
+    whisper:  mcycle = 30,004   minstret = 30,004   Vector = 10,001
+    gem5:     mcycle = 60,016   minstret = 30,004
+    → 4.0 cycles/vfmadd (gem5); measured peak compute = 4.0 GFLOP/s
+
 ## roofline analysis  (dgemm 16×16 FP64 kernel)
 
     --- FLOPs ---
@@ -67,12 +72,18 @@
     (AI is VLEN-invariant: same algorithm, same data footprint)
 
     --- hardware ceilings ---
-    peak compute (vl=8, FP64, FMA) = 8 elem × 2 FLOP × 1 GHz = 16.0 GFLOP/s
-    peak memory BW (DDR3-1600 8x8) = 1600 MT/s × 8 B         = 12.8 GB/s
+    peak compute (measured, FMADD micro-bench, gem5):
+      ITERS=10000 vfmadd, vl=8, FP64 → FLOPs = 160,000
+      gem5 mcycle = 60,016;  scalar instr ≈ 20,003 × 1 cycle = 20,003 cycles
+      vfmadd cycles = 60,016 − 20,003 = 40,013  →  4.0 cycles/vfmadd
+      peak compute  = (8 × 2 FLOP) / (4 cycles / 1 GHz)  = 4.0 GFLOP/s
+      (theoretical max = 8 × 2 × 1 GHz = 16.0 GFLOP/s; TimingSimpleCPU
+       issues one instruction per cycle but vfmadd has 4-cycle execute latency)
+    peak memory BW (DDR3-1600 8x8) = 1600 MT/s × 8 B          = 12.8 GB/s
 
     --- roofline ---
-    ridge point  = 16.0 GFLOP/s / 12.8 GB/s = 1.25 FLOP/B
-    kernel AI (0.080) < ridge (1.25)  →  MEMORY BOUND
+    ridge point  = 4.0 GFLOP/s / 12.8 GB/s = 0.3125 FLOP/B
+    kernel AI (0.080) < ridge (0.3125)  →  MEMORY BOUND
 
     attainable perf = AI × peak_BW = 0.080 × 12.8 GB/s = 1.024 GFLOP/s
 
@@ -97,6 +108,7 @@
 
       avg cycles/load = 26,924 / 1,056 ≈ 25.5 cycles  (64-byte wide load)
       L1 cache hit latency (config): tag_latency=2 + data_latency=2 = 4 cycles
+      avg cycles/vfmadd (from FMADD bench) ≈ 4.0 cycles
 
     Per-load cycle count is higher than VLEN=256 (25.5 vs 16.9) because 64-byte
     loads span a full cache line and incur more internal pipeline steps. However,

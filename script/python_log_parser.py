@@ -12,6 +12,9 @@ class sim_log_parser:
         self.counter_pattern = re.compile(r'counter:\s*(?P<name>[a-zA-Z]+)\s*=\s*(?P<value>[0-9]+)')
         self.result = { "counter":[], "hpm":[] }
 
+    def reset(self):
+        self.result = { "counter":[], "hpm":[] }
+
     def log_parse(self,logfile,sim_select):
 
         if sim_select == "whisper":

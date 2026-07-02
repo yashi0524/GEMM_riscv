@@ -25,6 +25,23 @@
 unsigned long long cycle_count, inst_count;
 unsigned long long hpmcounter[32] = {0};
 
+// Static allocation for simplicity in embedded/sim environment
+double A[M * K] __attribute__((aligned(64))) = {
+    1.0, 2.0, 3.0, 4.0,
+    5.0, 6.0, 7.0, 8.0,
+    9.0, 8.0, 7.0, 6.0,
+    5.0, 4.0, 3.0, 2.0
+};
+
+double B[K * N] __attribute__((aligned(64))) = {
+    1.0, 0.0, 0.0, 0.0,
+    0.0, 1.0, 0.0, 0.0,
+    0.0, 0.0, 1.0, 0.0,
+    0.0, 0.0, 0.0, 1.0
+};
+
+double C[M * N] __attribute__((aligned(64))) = {0};
+
 
 void scalar_dgemm(int , int , int , 
                   double , const double *, int ,
@@ -68,23 +85,7 @@ void print_matrix(const char *name, double *mat, int rows, int cols) {
 }
 
 int main() {
-    // Static allocation for simplicity in embedded/sim environment
-    double A[M * K] = {
-        1.0, 2.0, 3.0, 4.0,
-        5.0, 6.0, 7.0, 8.0,
-        9.0, 8.0, 7.0, 6.0,
-        5.0, 4.0, 3.0, 2.0
-    };
-
-    double B[K * N] = {
-        1.0, 0.0, 0.0, 0.0,
-        0.0, 1.0, 0.0, 0.0,
-        0.0, 0.0, 1.0, 0.0,
-        0.0, 0.0, 0.0, 1.0
-    };
-
-    double C[M * N] = {0}; // Initialize C with zeros
-
+    
     double alpha = 1.0;
     double beta = 0.0;
   

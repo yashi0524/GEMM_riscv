@@ -6,7 +6,7 @@
 #         except hpmcounterN which are read only at the end (not delta)
 
 # --- whisper (functional simulator, VLEN=512, bytes_per_vec=64) ---
-# date: 2026-06-22
+# date: 2026-06-26
 # config: /home/ajno5/work/2_pattern/dgemm/sim_config/whisper_rv64gcv_config.json
 mcycle          =   8,795
 inst_retired    =   8,796   # minstret CSR delta
@@ -15,10 +15,26 @@ hpmcounter[4]   =   1,056   # VectorLoad  (event 64: vector load instructions)
 hpmcounter[5]   =     544   # VectorStore (event 65: vector store instructions)
 
 # --- gem5 TimingSimpleCPU (cycle-accurate, 1 GHz, 64KB L1 I/D cache, DDR3-1600, VLEN=512) ---
-# date: 2026-06-22
+# date: 2026-06-26
 # config: /home/ajno5/work/2_pattern/dgemm/sim_config/gem5_riscv_demo_riscv_baremetal_semihost.py
 mcycle          =  26,924
 minstret        =   8,796   # inst_count CSR delta
 # note: gem5 hpmcounterN values are NOT event counts (TimingSimpleCPU does not
 #       implement HPM events); they reflect raw cycle accumulation from sim start.
 #       Use whisper hpmcounterN for instruction-level event counts.
+
+# --- FMADD micro-benchmark (peak compute probe) ---
+# kernel: tight vfmadd loop, ITERS=10000, vl=8, FP64 (8 × FP64 FMA per instr)
+# binary: /home/ajno5/work/2_pattern/dgemm/test/fmadd_riscv
+# date: 2026-06-26
+
+# whisper (functional):
+mcycle          =  30,004
+minstret        =  30,004
+hpmcounter[3]   =  10,001   # Vector (10,000 vfmadd + 1 overhead)
+
+# gem5 TimingSimpleCPU:
+mcycle          =  60,016
+minstret        =  30,004
+# derived: scalar instr ≈ 20,003 × 1 cycle; vfmadd cycles = 40,013 → 4.0 cyc/vfmadd
+# measured peak compute = (8 × 2 FLOP) / (4 cyc / 1 GHz) = 4.0 GFLOP/s

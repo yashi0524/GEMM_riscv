@@ -50,22 +50,22 @@ class riscv_sim:
 
         self.mode = sys.argv[6] if len(sys.argv) > 6 else ""
 
-    def build_pattern(self):
-        test_config=json.load(open(self.test_config))
-        print(f"build pattern with {self.test_config}")
+    def build_bench(self, name, make_vars=None):
+        """Build test/{name}_riscv via the generic Makefile pattern rule.
 
-        compile_option= " ".join([
-            f"M={test_config['matrix']['M']}"
-        ])
-
-        #cmd=f"make clean && make {compile_option} && make dis"
-        cmd=f"make clean && make {compile_option}"
-        subprocess.run(cmd, shell=True)
-
-    def dump_flags(self):
-        postfix = f" 2>&1 | tee {self.logfile}"
-        cmd = f"make dump_flags {postfix}"
-        subprocess.run(cmd, shell=True)
+        Cleans only the specific target before rebuilding so other binaries
+        in test/ are not disturbed.  make_vars overrides Makefile variables
+        (e.g. {"M": 16} → make test/dgemm_riscv M=16).
+        """
+        target = f"{self.test_dir}/{name}_riscv"
+        for ext in ("", "_flags", ".dis"):
+            try:
+                os.remove(f"{target}{ext}")
+            except FileNotFoundError:
+                pass
+        vars_str = " ".join(f"{k}={v}" for k, v in (make_vars or {}).items())
+        print(f"build {name}_riscv  {vars_str}")
+        subprocess.run(f"make test/{name}_riscv {vars_str}", shell=True, check=False)
 
 
     def run_pattern(self):
@@ -79,7 +79,8 @@ class riscv_sim:
             case "gem5":
                 sim_bin = "gem5.opt"
                 options = ""
-                options += (f" -d {self.test_dir}/m5out {self.sim_config} ")
+                m5out = getattr(self, "m5out_dir", f"{self.test_dir}/m5out")
+                options += (f" -d {m5out} {self.sim_config} ")
 
             case "whisper":
                 sim_bin = "whisper"
@@ -108,11 +109,8 @@ class riscv_sim:
 
 
 if __name__ == "__main__":
-    root_path="/home/ajno5/work/2_pattern/dgemm"
-
+    # standalone: python python_riscv_sim.py <whisper|gem5> <binary>
+    # build first with: make test/<name>_riscv [VARS...]
     sim = riscv_sim()
     sim.parse_argv()
-    #sim.logfile = "test_log.txt"
-    sim.build_pattern()
-    #sim.dump_flags()
     sim.run_pattern()

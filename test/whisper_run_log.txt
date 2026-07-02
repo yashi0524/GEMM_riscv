@@ -5,10 +5,10 @@ misa = 0x800000000034112D
 Starting Scalar DGEMM...
 
 vl = 0x00000008
-counter: mcycle = 8795
-counter: minstret = 8796
+counter: mcycle = 8796
+counter: minstret = 8797
 hpmcounter[3]: Vector = 1072
 hpmcounter[4]: VectorLoad = 1056
 hpmcounter[5]: VectorStore = 544
-Info: Target program exited with code 1774128
-Info: Executed 27384 instructions and retired 27384 instructions in 0.01s -- 5441971 inst/s hart=0
+Info: Target program exited with code 1780384
+Info: Executed 29673 instructions and retired 29673 instructions in 0.01s -- 3868709 inst/s hart=0
