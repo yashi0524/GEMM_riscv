@@ -1,5 +1,5 @@
 {
-    "isa" : "rv64imafdcv",
+    "isa" : "rv64imafdcv_zfh_zvfh_zfbfmin_zvfbfmin_zvfbfwma",
     "abi_names" : "true",
 
     "xlen": 64,

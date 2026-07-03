@@ -13,8 +13,14 @@ LDSCRIPT := linker_semi.ld
 OUT_DIR  := test
 
 # --- Target Architecture ---
+# MARCH: override on the command line to add extensions
+#   double : rv64gcv  (default)
+#   __bf16 : rv64gcv_zvfbfmin1p0_zvfbfwma1p0
+MARCH        := rv64gcv
+
 TARGET_FLAGS := --target=riscv64-unknown-elf \
-                -march=rv64gcv \
+                -march=$(MARCH) \
+                -menable-experimental-extensions \
                 -mabi=lp64d
 
 # --- Toolchain Paths ---
@@ -65,10 +71,12 @@ $(OUT_DIR)/%_riscv: $(SRC_DIR)/%.c $(STARTUP) $(LDSCRIPT)
 # =============================================================
 # Per-benchmark flag overrides (target-specific variables)
 # =============================================================
-M     := 4
-ITERS := 10000
+M            := 4
+ITERS        := 10000
+TARGET_FLOAT := double
 
 $(OUT_DIR)/dgemm_riscv: BENCH_EXTRA_FLAGS = -DM=$(M) -mllvm -force-vector-width=8
+$(OUT_DIR)/gemm_riscv:  BENCH_EXTRA_FLAGS = -DM=$(M) -Dtarget_float=$(TARGET_FLOAT) -mllvm -force-vector-width=8
 $(OUT_DIR)/fmadd_riscv: BENCH_EXTRA_FLAGS = -DITERS=$(ITERS)
 
 # =============================================================
@@ -76,6 +84,7 @@ $(OUT_DIR)/fmadd_riscv: BENCH_EXTRA_FLAGS = -DITERS=$(ITERS)
 # =============================================================
 all:   $(OUT_DIR)/dgemm_riscv
 dgemm: $(OUT_DIR)/dgemm_riscv
+gemm:  $(OUT_DIR)/gemm_riscv
 fmadd: $(OUT_DIR)/fmadd_riscv
 
 # =============================================================
