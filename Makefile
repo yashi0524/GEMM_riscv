@@ -77,7 +77,7 @@ TARGET_FLOAT := double
 
 $(OUT_DIR)/dgemm_riscv: BENCH_EXTRA_FLAGS = -DM=$(M) -mllvm -force-vector-width=8
 $(OUT_DIR)/gemm_riscv:  BENCH_EXTRA_FLAGS = -DM=$(M) -Dtarget_float=$(TARGET_FLOAT) -mllvm -force-vector-width=8
-$(OUT_DIR)/fmadd_riscv: BENCH_EXTRA_FLAGS = -DITERS=$(ITERS)
+$(OUT_DIR)/fmacc_riscv: BENCH_EXTRA_FLAGS = -DITERS=$(ITERS)
 
 # =============================================================
 # Convenience aliases
@@ -85,13 +85,13 @@ $(OUT_DIR)/fmadd_riscv: BENCH_EXTRA_FLAGS = -DITERS=$(ITERS)
 all:   $(OUT_DIR)/dgemm_riscv
 dgemm: $(OUT_DIR)/dgemm_riscv
 gemm:  $(OUT_DIR)/gemm_riscv
-fmadd: $(OUT_DIR)/fmadd_riscv
+fmacc: $(OUT_DIR)/fmacc_riscv
 
 # =============================================================
 # Utility targets
 # =============================================================
 
-# Disassemble + verify _write/_exit; override with: make dis BIN=test/fmadd_riscv
+# Disassemble + verify _write/_exit; override with: make dis BIN=test/fmacc_riscv
 BIN ?= $(OUT_DIR)/dgemm_riscv
 dis: $(BIN)
 	riscv64-unknown-elf-objdump -d -M no-aliases $(BIN) > $(BIN).dis
@@ -100,11 +100,11 @@ dis: $(BIN)
 	@echo "=== _exit (should show 0x4200007b) ==="
 	@grep -A 5 "<_exit>:" $(BIN).dis | head -8
 
-# Read embedded build flags; override with: make dump_flags BIN=test/fmadd_riscv
+# Read embedded build flags; override with: make dump_flags BIN=test/fmacc_riscv
 dump_flags:
 	riscv64-unknown-elf-readelf -p .build_flags $(BIN)_flags
 
 clean:
 	rm -f $(OUT_DIR)/*_riscv $(OUT_DIR)/*_riscv_flags $(OUT_DIR)/*_riscv.dis
 
-.PHONY: all dgemm fmadd dis dump_flags clean
+.PHONY: all dgemm fmacc dis dump_flags clean

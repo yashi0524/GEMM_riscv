@@ -37,10 +37,10 @@
     IPC           =   0.327   (8,796 / 26,924)
     CPI           =   3.06    (26,924 / 8,796)
 
-    --- FMADD micro-benchmark (peak compute probe, ITERS=10000, vl=8, FP64) ---
+    --- FMACC micro-benchmark (peak compute probe, ITERS=10000, vl=8, FP64) ---
     whisper:  mcycle = 30,004   minstret = 30,004   Vector = 10,001
     gem5:     mcycle = 60,016   minstret = 30,004
-    → 4.0 cycles/vfmadd (gem5); measured peak compute = 4.0 GFLOP/s
+    → 4.0 cycles/vfmacc (gem5); measured peak compute = 4.0 GFLOP/s
 
 ## roofline analysis  (dgemm 16×16 FP64 kernel)
 
@@ -72,13 +72,13 @@
     (AI is VLEN-invariant: same algorithm, same data footprint)
 
     --- hardware ceilings ---
-    peak compute (measured, FMADD micro-bench, gem5):
-      ITERS=10000 vfmadd, vl=8, FP64 → FLOPs = 160,000
+    peak compute (measured, FMACC micro-bench, gem5):
+      ITERS=10000 vfmacc, vl=8, FP64 → FLOPs = 160,000
       gem5 mcycle = 60,016;  scalar instr ≈ 20,003 × 1 cycle = 20,003 cycles
-      vfmadd cycles = 60,016 − 20,003 = 40,013  →  4.0 cycles/vfmadd
+      vfmacc cycles = 60,016 − 20,003 = 40,013  →  4.0 cycles/vfmacc
       peak compute  = (8 × 2 FLOP) / (4 cycles / 1 GHz)  = 4.0 GFLOP/s
       (theoretical max = 8 × 2 × 1 GHz = 16.0 GFLOP/s; TimingSimpleCPU
-       issues one instruction per cycle but vfmadd has 4-cycle execute latency)
+       issues one instruction per cycle but vfmacc has 4-cycle execute latency)
     peak memory BW (DDR3-1600 8x8) = 1600 MT/s × 8 B          = 12.8 GB/s
 
     --- roofline ---
@@ -108,7 +108,7 @@
 
       avg cycles/load = 26,924 / 1,056 ≈ 25.5 cycles  (64-byte wide load)
       L1 cache hit latency (config): tag_latency=2 + data_latency=2 = 4 cycles
-      avg cycles/vfmadd (from FMADD bench) ≈ 4.0 cycles
+      avg cycles/vfmacc (from FMACC bench) ≈ 4.0 cycles
 
     Per-load cycle count is higher than VLEN=256 (25.5 vs 16.9) because 64-byte
     loads span a full cache line and incur more internal pipeline steps. However,

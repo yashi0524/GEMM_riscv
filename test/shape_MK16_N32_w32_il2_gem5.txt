@@ -12,9 +12,9 @@ gem5 is copyrighted software; use the --copyright option for details.
 
 gem5 version 25.1.0.0
 gem5 compiled Apr 16 2026 01:18:10
-gem5 started Jul  6 2026 04:57:17
-gem5 executing on vmserver, pid 531582
-command line: gem5.opt -d /home/ajno5/work/2_pattern/gemm/test/m5out /home/ajno5/work/2_pattern/gemm/sim_config/gem5_riscv_demo_riscv_baremetal_semihost.py /home/ajno5/work/2_pattern/gemm/test/gemm_riscv
+gem5 started Jul  3 2026 15:29:34
+gem5 executing on vmserver, pid 492390
+command line: gem5.opt -d /home/ajno5/work/2_pattern/dgemm/test/shape_MK16_N32_w32_il2_m5out /home/ajno5/work/2_pattern/dgemm/sim_config/gem5_riscv_demo_riscv_baremetal_semihost.py /home/ajno5/work/2_pattern/dgemm/test/gemm_riscv
 
 info: Standard input is not a terminal, disabling listeners.
 Starting bare-metal RISC-V M-mode simulation...
@@ -22,9 +22,9 @@ misa = 0x800000000034112D
 Starting Scalar GEMM...
 
 vl = 0x00000008
-counter: mcycle = 23641
-counter: minstret = 8797
-hpmcounter[3]: Vector = 86052
-hpmcounter[4]: VectorLoad = 86064
-hpmcounter[5]: VectorStore = 86070
-Exit @ tick 117667000: semi:ADP_Stopped_ApplicationExit
+counter: mcycle = 367427
+counter: minstret = 90860
+hpmcounter[3]: Vector = 417167
+hpmcounter[4]: VectorLoad = 417179
+hpmcounter[5]: VectorStore = 417185
+Exit @ tick 449406000: semi:ADP_Stopped_ApplicationExit

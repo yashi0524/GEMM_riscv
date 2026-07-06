@@ -1,7 +1,15 @@
+"""
+Usage:
+  python3 harness.py          -- build + run the enabled benchmarks
+  python3 harness.py clean    -- remove all m5out dirs under test/
+"""
+
+import os
 import sys
 import json
+import shutil
 
-pattern_root    = "/home/ajno5/work/2_pattern/dgemm"
+pattern_root    = "/home/ajno5/work/2_pattern/gemm"
 pattern_script  = f"{pattern_root}/script"
 test_dir        = f"{pattern_root}/test"
 test_config_path = f"{test_dir}/config/test_config.json"
@@ -26,7 +34,7 @@ test_cfg = json.load(open(test_config_path))
 BENCHES = [
     {
         "enabled":   True,
-        "name":      "dgemm",
+        "name":      "gemm",
         "make_vars": {"M": test_cfg["matrix"]["M"]},
         "whisper_log": f"{test_dir}/whisper_run_log.txt",
         "gem5_log":    f"{test_dir}/gem5_run_log.txt",
@@ -35,14 +43,33 @@ BENCHES = [
     },
     {
         "enabled":   False,
-        "name":      "fmadd",
-        "make_vars": {"ITERS": test_cfg["fmadd"]["ITERS"]},
-        "whisper_log": f"{test_dir}/fmadd_whisper_run_log.txt",
-        "gem5_log":    f"{test_dir}/fmadd_gem5_run_log.txt",
-        "output":      f"{test_dir}/fmadd_output.txt",
-        "m5out":       f"{test_dir}/fmadd_m5out",
+        "name":      "fmacc",
+        "make_vars": {"ITERS": test_cfg["fmacc"]["ITERS"]},
+        "whisper_log": f"{test_dir}/fmacc_whisper_run_log.txt",
+        "gem5_log":    f"{test_dir}/fmacc_gem5_run_log.txt",
+        "output":      f"{test_dir}/fmacc_output.txt",
+        "m5out":       f"{test_dir}/fmacc_m5out",
     },
 ]
+
+def clean():
+    removed = []
+    for entry in os.listdir(test_dir):
+        if entry == "m5out" or entry.endswith("_m5out"):
+            d = os.path.join(test_dir, entry)
+            if os.path.isdir(d):
+                shutil.rmtree(d)
+                removed.append(d)
+    if removed:
+        print(f"Removed {len(removed)} dir(s):")
+        for r in removed:
+            print(f"  {r}")
+    else:
+        print("Nothing to clean.")
+
+if len(sys.argv) > 1 and sys.argv[1] == "clean":
+    clean()
+    sys.exit(0)
 
 # --- Run ---
 for bench in [b for b in BENCHES if b["enabled"]]:
@@ -65,6 +92,7 @@ for bench in [b for b in BENCHES if b["enabled"]]:
         sim_w.run_pattern()
 
     if gem5_test:
+        shutil.rmtree(bench["m5out"], ignore_errors=True)
         sim_g = riscv_sim()
         sim_g.root         = pattern_root
         sim_g.test_dir     = test_dir

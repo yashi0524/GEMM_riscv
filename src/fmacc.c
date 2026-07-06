@@ -9,7 +9,7 @@
 int main(void)
 {
     printf("misa = 0x%016lX\n", READ_CSR(misa));
-    printf("Starting FMADD micro-benchmark...\n\n");
+    printf("Starting FMACC micro-benchmark...\n\n");
 
     /* Hardware-max vl for LMUL=1 SEW=64: VLEN=512 -> vl=8 */
     size_t vl = __riscv_vsetvlmax_e64m1();

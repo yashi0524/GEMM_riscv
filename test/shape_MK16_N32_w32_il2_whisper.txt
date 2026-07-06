@@ -5,10 +5,10 @@ misa = 0x800000000034112D
 Starting Scalar GEMM...
 
 vl = 0x00000008
-counter: mcycle = 8796
-counter: minstret = 8797
-hpmcounter[3]: Vector = 1072
-hpmcounter[4]: VectorLoad = 1056
-hpmcounter[5]: VectorStore = 544
-Info: Target program exited with code 1780384
-Info: Executed 29696 instructions and retired 29696 instructions in 0.01s -- 2705539 inst/s hart=0
+counter: mcycle = 90859
+counter: minstret = 90860
+hpmcounter[3]: Vector = 0
+hpmcounter[4]: VectorLoad = 0
+hpmcounter[5]: VectorStore = 0
+Info: Target program exited with code 1776800
+Info: Executed 109575 instructions and retired 109575 instructions in 0.02s -- 5954515 inst/s hart=0

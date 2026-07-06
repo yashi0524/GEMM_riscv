@@ -2,7 +2,7 @@
     "matrix": {
         "M": 16, "N": 8, "K": 8
     },
-    "fmadd": {
+    "fmacc": {
         "ITERS": 10000
     }
 }
