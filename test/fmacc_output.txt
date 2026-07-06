@@ -1,5 +1,0 @@
-=== whisper result ===
-Vector: 10001
-=== gem5 result ===
-mcycle: 60016
-minstret: 30004

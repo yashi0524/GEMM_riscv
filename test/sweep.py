@@ -11,24 +11,25 @@ import sys
 import shutil
 import subprocess
 
-pattern_root       = "/home/ajno5/work/2_pattern/dgemm"
+pattern_root       = "/home/ajno5/work/2_pattern/gemm"
 pattern_script     = f"{pattern_root}/script"
 test_dir           = f"{pattern_root}/test"
-sim_config_gem5    = f"{pattern_root}/sim_config/gem5_riscv_demo_riscv_baremetal_semihost.py"
+sim_config_gem5    = f"{pattern_root}/sim_config/gem5_riscv_demo_riscv_baremetal_semihost_minor.py"
 sim_config_whisper = f"{pattern_root}/sim_config/whisper_rv64gcv_config.json"
 
 sys.path.append(pattern_script)
 from python_riscv_sim import riscv_sim
 from python_log_parser import sim_log_parser
 
-M         = 16
-FLOPS     = 2 * M * M * M   # 8,192
-ATTAIN    = 1.024            # GFLOP/s  (AI=0.080 * BW=12.8 GB/s)
+TARGET_FLOAT = "double"
+M, N, K   = 8, 16, 8        # N = (VLEN/8/sizeof(double)) * interleave = (512/64)*2
+FLOPS     = 2 * M * N * K
+PEAK_BW   = 12.8             # GB/s  (DDR3-1600 8x8)
 
 WIDTHS     = [4, 8]
 INTERLEAVE = [1, 2, 4]
 
-binary = f"{test_dir}/dgemm_riscv"
+binary = f"{test_dir}/gemm_riscv"
 
 def sweep_tags():
     return [f"w{w}_il{il}" for w in WIDTHS for il in INTERLEAVE]
@@ -69,13 +70,14 @@ results = []
 for w in WIDTHS:
     for il in INTERLEAVE:
         tag         = f"w{w}_il{il}"
-        bench_extra = f"-DM={M} -mllvm -force-vector-width={w} -mllvm -force-vector-interleave={il}"
+        bench_extra = (f"-DM={M} -DN={N} -DK={K} -Dtarget_float={TARGET_FLOAT} "
+                        f"-mllvm -force-vector-width={w} -mllvm -force-vector-interleave={il}")
         whisper_log = f"{test_dir}/sweep_{tag}_whisper.txt"
         gem5_log    = f"{test_dir}/sweep_{tag}_gem5.txt"
         m5out_dir   = f"{test_dir}/sweep_{tag}_m5out"
 
         print(f"\n{'='*60}")
-        print(f"  width={w}  interleave={il}")
+        print(f"  width={w}  interleave={il}  (M={M} N={N} K={K} {TARGET_FLOAT})")
         print(f"{'='*60}")
 
         # Build — delete binary first so make always rebuilds
@@ -85,7 +87,7 @@ for w in WIDTHS:
             except FileNotFoundError:
                 pass
         subprocess.run(
-            ["make", "test/dgemm_riscv", f"BENCH_EXTRA_FLAGS={bench_extra}"],
+            ["make", "test/gemm_riscv", f"BENCH_EXTRA_FLAGS={bench_extra}"],
             cwd=pattern_root, check=False
         )
 
@@ -126,7 +128,8 @@ for w in WIDTHS:
         ai            = FLOPS / bytes_q               if bytes_q        else None
         gflops        = FLOPS / (mcycle / 1e9) / 1e9 if mcycle         else None
         cyc_load      = mcycle / vec_load             if vec_load       else None
-        eff           = (gflops / ATTAIN) * 100       if gflops         else None
+        attain        = ai * PEAK_BW                  if ai             else None
+        eff           = (gflops / attain) * 100       if gflops and attain else None
 
         results.append({
             "width": w, "interleave": il,

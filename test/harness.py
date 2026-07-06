@@ -1,7 +1,7 @@
 """
 Usage:
   python3 harness.py          -- build + run the enabled benchmarks
-  python3 harness.py clean    -- remove all m5out dirs under test/
+  python3 harness.py clean    -- remove all run logs and m5out dirs under test/
 """
 
 import os
@@ -13,7 +13,7 @@ pattern_root    = "/home/ajno5/work/2_pattern/gemm"
 pattern_script  = f"{pattern_root}/script"
 test_dir        = f"{pattern_root}/test"
 test_config_path = f"{test_dir}/config/test_config.json"
-sim_config_gem5    = f"{pattern_root}/sim_config/gem5_riscv_demo_riscv_baremetal_semihost.py"
+sim_config_gem5    = f"{pattern_root}/sim_config/gem5_riscv_demo_riscv_baremetal_semihost_minor.py"
 sim_config_whisper = f"{pattern_root}/sim_config/whisper_rv64gcv_config.json"
 
 sys.path.append(f"{pattern_script}/")
@@ -54,6 +54,11 @@ BENCHES = [
 
 def clean():
     removed = []
+    for bench in BENCHES:
+        for f in (bench["whisper_log"], bench["gem5_log"], bench["output"]):
+            if os.path.exists(f):
+                os.remove(f)
+                removed.append(f)
     for entry in os.listdir(test_dir):
         if entry == "m5out" or entry.endswith("_m5out"):
             d = os.path.join(test_dir, entry)
@@ -61,7 +66,7 @@ def clean():
                 shutil.rmtree(d)
                 removed.append(d)
     if removed:
-        print(f"Removed {len(removed)} dir(s):")
+        print(f"Removed {len(removed)} file(s)/dir(s):")
         for r in removed:
             print(f"  {r}")
     else:
