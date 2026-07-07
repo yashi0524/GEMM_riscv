@@ -50,6 +50,15 @@ BENCHES = [
         "output":      f"{test_dir}/fmacc_output.txt",
         "m5out":       f"{test_dir}/fmacc_m5out",
     },
+    {
+        "enabled":   False,
+        "name":      "fmacc_fp16",
+        "make_vars": {"ITERS": test_cfg["fmacc"]["ITERS"]},
+        "whisper_log": f"{test_dir}/fmacc_fp16_whisper_run_log.txt",
+        "gem5_log":    f"{test_dir}/fmacc_fp16_gem5_run_log.txt",
+        "output":      f"{test_dir}/fmacc_fp16_output.txt",
+        "m5out":       f"{test_dir}/fmacc_fp16_m5out",
+    },
 ]
 
 def clean():

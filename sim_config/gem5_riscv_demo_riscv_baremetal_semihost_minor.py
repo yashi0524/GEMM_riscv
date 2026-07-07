@@ -1,7 +1,28 @@
 # bare_metal_riscv_minor.py — same system as the TimingSimpleCPU config,
 # but using MinorCPU (in-order, pipelined) instead of TimingSimpleCPU.
+import os
 import m5
 from m5.objects import *
+
+# --- Float/SIMD functional-unit count override (diagnostic knob) ---
+# MinorDefaultFUPool has exactly 1 FloatSimd FU by default (vs 2 IntFUs) —
+# that's why a dependency-free vfmacc stream saturates at 1/cycle even with
+# MinorCPU's dual-issue width. MINOR_FLOAT_FU_COUNT=2 adds a 2nd instance to
+# test whether 2 vfmaccs/cycle (32 GFLOP/s) becomes achievable.
+#   MINOR_FLOAT_FU_COUNT=2 gem5.opt ... this_config.py <binary>
+FLOAT_FU_COUNT = int(os.environ.get("MINOR_FLOAT_FU_COUNT", "1"))
+
+class CustomMinorFUPool(MinorDefaultFUPool):
+    funcUnits = [
+        MinorDefaultIntFU(),
+        MinorDefaultIntFU(),
+        MinorDefaultIntMulFU(),
+        MinorDefaultIntDivFU(),
+    ] + [MinorDefaultFloatSimdFU() for _ in range(FLOAT_FU_COUNT)] + [
+        MinorDefaultPredFU(),
+        MinorDefaultMemFU(),
+        MinorDefaultMiscFU(),
+    ]
 
 # --- System ---
 system = System()
@@ -14,6 +35,7 @@ system.m5ops_base = 0x10010000   #enables m5ops pseudo-inst decoding
 
 # --- CPU ---
 system.cpu = RiscvMinorCPU()
+system.cpu.executeFuncUnits = CustomMinorFUPool()
 system.cpu.isa = RiscvISA(vlen=512, elen=64)
 
 # --- Memory bus ---
