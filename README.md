@@ -1,5 +1,9 @@
 # dgemm_riscv
 
+See [doc/microbenchmark.md](doc/microbenchmark.md) for the FMACC peak-compute
+micro-benchmark (unroll progression, IPC analysis, and why functional-unit
+latency isn't the bottleneck) that backs the peak-compute ceiling used below.
+
 ## test environment
     simulator : gem5 MinorCPU (in-order, pipelined; TimingSimpleCPU config also
                 available at sim_config/gem5_riscv_demo_riscv_baremetal_semihost.py)
@@ -39,15 +43,14 @@
     CPI           =   1.085   (9,547 / 8,797)
 
     --- FMACC micro-benchmark (peak compute probe, ITERS=10000, vl=8, FP64) ---
-    whisper:  mcycle = 30,004   minstret = 30,004   Vector = 10,001
-    gem5:     mcycle = 60,054   minstret = 30,004
-    → 6.0 cycles/vfmacc (gem5); measured peak compute = 2.66 GFLOP/s
-
-    note: fmacc's accumulate chain (vc = vc + va*vb, same register every
-    iteration) is a strict serial dependency — MinorCPU's pipelining cannot
-    hide this, so cycles/vfmacc is essentially identical to TimingSimpleCPU
-    (6.0 vs 6.0). Only load/store-bound kernels like gemm benefit from Minor's
-    pipeline overlap (see roofline section below).
+    Full unroll progression (serial → x4 → x8 → x12 → x16), IPC analysis, and
+    the functional-unit-latency investigation are in doc/microbenchmark.md.
+    Summary: unrolling into independent accumulators broke a serial
+    dependency chain that MinorCPU's dual-issue pipeline couldn't otherwise
+    fill; the best result (x16, 16 independent accumulators) reached
+    gem5 mcycle = 10,170 for total_ops = 10,000 → 1.02 cycles/vfmacc →
+    15.73 GFLOP/s (98.3% of the 16.0 GFLOP/s theoretical max), used below as
+    the compute ceiling for the gemm roofline analysis.
 
 ## roofline analysis  (gemm 16×16 FP64 kernel)
 
@@ -79,20 +82,18 @@
     (AI is VLEN-invariant: same algorithm, same data footprint)
 
     --- hardware ceilings ---
-    peak compute (measured, FMACC micro-bench, gem5 MinorCPU):
-      ITERS=10000 vfmacc, vl=8, FP64 → FLOPs = 160,000
-      gem5 mcycle = 60,054 (loop-only measurement)  →  6.0 cycles/vfmacc
-      peak compute  = (8 × 2 FLOP) / (6.0 cycles / 1 GHz)  = 2.66 GFLOP/s
-      (theoretical max = 8 × 2 × 1 GHz = 16.0 GFLOP/s; MinorCPU's default
-       float/SIMD functional unit has a 6-cycle op latency, and fmacc's
-       accumulate chain is fully serial — one op per opLat cycles, regardless
-       of pipelining. TimingSimpleCPU measures the same 6.0 cycles/vfmacc,
-       confirming this is an FU-latency limit, not an issue-width limit)
+    peak compute (measured, FMACC micro-bench, gem5 MinorCPU, unrolled x16 —
+    full derivation and unroll progression in doc/microbenchmark.md):
+      total_ops=10,000 vfmacc, vl=8, FP64 → FLOPs = 160,000
+      gem5 mcycle = 10,170 (loop-only measurement)  →  1.02 cycles/vfmacc
+      peak compute  = (8 × 2 FLOP) / (1.02 cycles / 1 GHz)  = 15.73 GFLOP/s
+      (theoretical max = 8 × 2 × 1 GHz = 16.0 GFLOP/s — x16 reaches 98.3% of it)
     peak memory BW (DDR3-1600 8x8) = 1600 MT/s × 8 B          = 12.8 GB/s
 
     --- roofline ---
-    ridge point  = 2.66 GFLOP/s / 12.8 GB/s = 0.208 FLOP/B
-    kernel AI (0.080) < ridge (0.208)  →  MEMORY BOUND
+    ridge point  = 15.73 GFLOP/s / 12.8 GB/s = 1.229 FLOP/B
+    kernel AI (0.080) < ridge (1.229)  →  MEMORY BOUND (by more than an order
+    of magnitude, now that the compute ceiling reflects a well-pipelined FMA)
 
     attainable perf = AI × peak_BW = 0.080 × 12.8 GB/s = 1.024 GFLOP/s
 
@@ -119,8 +120,8 @@
 
       avg cycles/load = 9,547 / 1,056 ≈ 9.04 cycles  (64-byte wide load)
       L1 cache hit latency (config): tag_latency=2 + data_latency=2 = 4 cycles
-      avg cycles/vfmacc (from FMACC bench) ≈ 6.0 cycles  (FU latency, not
-      hidden — fmacc's dependency chain leaves the pipeline nothing to overlap)
+      avg cycles/vfmacc (from FMACC bench): 6.0 (serial) → 1.02 (x16 unrolled)
+      — see doc/microbenchmark.md
 
     Switching CPU model from TimingSimpleCPU to MinorCPU cuts kernel cycles
     2.48× (23,641 → 9,547) purely by overlapping load latency instead of
@@ -128,8 +129,9 @@
     unchanged. The remaining gap from 100% BW utilization (83.8% achieved)
     reflects residual pipeline stalls (avg 9.04 cycles/load vs the 4-cycle raw
     L1 hit latency); an OOO core or deeper MSHR/issue width would close more
-    of it. fmacc throughput does not improve with this switch, since its
-    serial accumulate chain is bound by FU latency, not issue overlap.
+    of it. fmacc needed the same principle applied by hand (breaking its
+    single dependency chain via unrolling) to see any benefit from Minor's
+    pipelining at all — see doc/microbenchmark.md for that investigation.
 
 ## notes
     1. gem5 hpmcounterN are NOT valid event counts on either CPU model:
