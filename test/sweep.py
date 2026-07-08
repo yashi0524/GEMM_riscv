@@ -15,16 +15,18 @@
    — the default template sets shape M=N=K=16 for every variant this way.
    gem5_core selects the gem5 CPU model per variant: "timing" (RiscvTimingSimpleCPU),
    "minor" (RiscvMinorCPU), or "o3" (RiscvO3CPU).
-   kernel: "scalar" (default) or "opt" — src/gemm.c's main() always runs
-   scalar_gemm then opt_gemm in the same binary/run, printing two counter
-   blocks in row order; "kernel" just selects which block's counters this
-   variant reads (see KERNEL_OCCURRENCE), it doesn't change what's built.
-   Note: opt_gemm is hand-vectorized with explicit RVV intrinsics (vl from
-   hardware vlmax via vsetvl, unroll fixed at compile time by
-   OPT_GEMM_UNROLL) — it ignores -force-vector-width/-interleave entirely,
-   so "*_opt" variants sweep a single (width, interleave) pair that matches
-   the dtype's real vlmax (8 for fp64, 32 for fp16); sweeping those flags
-   for opt_gemm would be both redundant (no codegen difference) and wrong
+   kernel: "scalar" (default), "opt", or "blocked" — src/gemm.c's main()
+   always runs scalar_gemm, then opt_gemm, then opt_gemm_blocked in the same
+   binary/run, printing three counter blocks in row order; "kernel" just
+   selects which block's counters this variant reads (see
+   KERNEL_OCCURRENCE), it doesn't change what's built.
+   Note: opt_gemm/opt_gemm_blocked are hand-vectorized with explicit RVV
+   intrinsics (vl from hardware vlmax via vsetvl; opt_gemm's unroll is fixed
+   at compile time by OPT_GEMM_UNROLL, opt_gemm_blocked hardcodes a 16-row
+   block) — both ignore -force-vector-width/-interleave entirely, so their
+   variants sweep a single (width, interleave) pair that matches the
+   dtype's real vlmax (8 for fp64, 32 for fp16); sweeping those flags for
+   them would be both redundant (no codegen difference) and wrong
    (bytes_per_vec below assumes the swept width matches the kernel's actual
    vl, which is only true for the scalar_gemm/auto-vectorized case).
    test_enable: true/false toggles whether a variant's sweep runs at all.
@@ -72,7 +74,7 @@ SIZEOF_BY_TARGET_FLOAT = {"double": 8, "_Float16": 2}
 # src/gemm.c's main() runs scalar_gemm then opt_gemm, each printing its own
 # counter block — this picks which occurrence (0=first/scalar, 1=second/opt)
 # a variant's counters come from.
-KERNEL_OCCURRENCE = {"scalar": 0, "opt": 1}
+KERNEL_OCCURRENCE = {"scalar": 0, "opt": 1, "blocked": 2}
 
 TEMPLATE_KEY = "_template"
 

@@ -27,24 +27,29 @@ SERIES = {
 
 # (series, kernel, w, il, ai, gflops) — ai=None rows (il=4 scalar fallback) are omitted from the plot
 POINTS = [
-    ("fp64_minor", "scalar", 4, 1, 0.080, 0.4935), ("fp64_minor", "scalar", 4, 2, 0.080, 0.5985),
-    ("fp64_minor", "scalar", 4, 4, 0.080, 0.7244), ("fp64_minor", "scalar", 8, 1, 0.080, 0.7299),
-    ("fp64_minor", "scalar", 8, 2, 0.080, 0.8575), ("fp64_minor", "scalar", 8, 4, None,  0.1452),
+    ("fp64_minor", "scalar", 4, 1, 0.080, 0.4914), ("fp64_minor", "scalar", 4, 2, 0.080, 0.5946),
+    ("fp64_minor", "scalar", 4, 4, 0.080, 0.7279), ("fp64_minor", "scalar", 8, 1, 0.080, 0.7257),
+    ("fp64_minor", "scalar", 8, 2, 0.080, 0.8513), ("fp64_minor", "scalar", 8, 4, None,  0.1453),
 
-    ("fp64_o3", "scalar", 4, 1, 0.080, 1.2917), ("fp64_o3", "scalar", 4, 2, 0.080, 1.9100),
-    ("fp64_o3", "scalar", 4, 4, 0.080, 2.0531), ("fp64_o3", "scalar", 8, 1, 0.080, 1.9389),
-    ("fp64_o3", "scalar", 8, 2, 0.080, 2.8435), ("fp64_o3", "scalar", 8, 4, None,  0.3537),
+    ("fp64_o3", "scalar", 4, 1, 0.080, 1.2893), ("fp64_o3", "scalar", 4, 2, 0.080, 1.9064),
+    ("fp64_o3", "scalar", 4, 4, 0.080, 2.0736), ("fp64_o3", "scalar", 8, 1, 0.080, 1.9412),
+    ("fp64_o3", "scalar", 8, 2, 0.080, 2.8425), ("fp64_o3", "scalar", 8, 4, None,  0.3536),
 
-    ("fp16_minor", "scalar", 32, 1, 0.320, 1.5328), ("fp16_minor", "scalar", 32, 2, 0.195, 0.7831),
+    ("fp16_minor", "scalar", 32, 1, 0.320, 1.5343), ("fp16_minor", "scalar", 32, 2, 0.195, 0.7834),
     ("fp16_minor", "scalar", 32, 4, None,  0.0916),
 
-    ("fp16_o3", "scalar", 32, 1, 0.320, 5.5398), ("fp16_o3", "scalar", 32, 2, 0.195, 2.0195),
+    ("fp16_o3", "scalar", 32, 1, 0.320, 5.5483), ("fp16_o3", "scalar", 32, 2, 0.195, 2.0184),
     ("fp16_o3", "scalar", 32, 4, None,  0.1477),
 
-    ("fp64_minor", "opt", 8, 1, 0.222, 1.4412),
-    ("fp64_o3",    "opt", 8, 1, 0.222, 4.7053),
-    ("fp16_minor", "opt", 32, 1, 0.889, 3.5072),
-    ("fp16_o3",    "opt", 32, 1, 0.889, 15.0381),
+    ("fp64_minor", "opt", 8, 1, 0.222, 1.4257),
+    ("fp64_o3",    "opt", 8, 1, 0.222, 4.6972),
+    ("fp16_minor", "opt", 32, 1, 0.889, 3.5068),
+    ("fp16_o3",    "opt", 32, 1, 0.889, 14.9899),
+
+    ("fp64_minor", "blocked", 8, 1, 1.333, 1.9203),
+    ("fp64_o3",    "blocked", 8, 1, 1.333, 4.8273),
+    ("fp16_minor", "blocked", 32, 1, 5.333, 4.2380),
+    ("fp16_o3",    "blocked", 32, 1, 5.333, 15.9766),
 ]
 
 PEAK_BW = 12.8   # GB/s (DDR3-1600 8x8), matches test/sweep.py's PEAK_BW
@@ -112,18 +117,27 @@ for key, s in SERIES.items():
                f'stroke-width="2" stroke-dasharray="2 4" opacity="0.85"/>')
     svg.append(f'<text x="{ML+plotW+8}" y="{y+4:.1f}" font-size="11" fill="{s["color"]}" font-weight="700">{s["ceiling"]} GFLOP/s</text>')
 
-# scatter points: circle = scalar_gemm, diamond = opt_gemm (same color = same series identity)
+def marker_svg(kernel, cx, cy, color, r=6.5):
+    """circle = scalar_gemm, diamond = opt_gemm, square = opt_gemm_blocked
+    (same color = same series identity, shape = kernel)."""
+    if kernel == "opt":
+        rr = r + 1
+        pts = f"{cx:.1f},{cy-rr:.1f} {cx+rr:.1f},{cy:.1f} {cx:.1f},{cy+rr:.1f} {cx-rr:.1f},{cy:.1f}"
+        return f'<polygon points="{pts}" fill="{color}" stroke="#ffffff" stroke-width="1.5"/>'
+    elif kernel == "blocked":
+        s = r * 1.6
+        return (f'<rect x="{cx-s/2:.1f}" y="{cy-s/2:.1f}" width="{s:.1f}" height="{s:.1f}" '
+                f'fill="{color}" stroke="#ffffff" stroke-width="1.5"/>')
+    else:
+        return f'<circle cx="{cx:.1f}" cy="{cy:.1f}" r="{r}" fill="{color}" stroke="#ffffff" stroke-width="1.5" opacity="0.7"/>'
+
+# scatter points
 for key, kernel, w, il, ai, g in POINTS:
     if ai is None:
         continue
     s = SERIES[key]
     cx, cy = px(ai), py(g)
-    if kernel == "opt":
-        r = 7.5
-        pts = f"{cx:.1f},{cy-r:.1f} {cx+r:.1f},{cy:.1f} {cx:.1f},{cy+r:.1f} {cx-r:.1f},{cy:.1f}"
-        svg.append(f'<polygon points="{pts}" fill="{s["color"]}" stroke="#ffffff" stroke-width="1.5"/>')
-    else:
-        svg.append(f'<circle cx="{cx:.1f}" cy="{cy:.1f}" r="6.5" fill="{s["color"]}" stroke="#ffffff" stroke-width="1.5" opacity="0.7"/>')
+    svg.append(marker_svg(kernel, cx, cy, s["color"]))
 
 # legend row(s) below the chart
 leg_y = legend1Y
@@ -137,15 +151,13 @@ svg.append(f'<text x="{leg_x+26}" y="{leg_y}" font-size="12" fill="{TEXT_SEC}">M
 
 leg_y2 = legend2Y
 leg_x2 = ML
-svg.append(f'<circle cx="{leg_x2+6}" cy="{leg_y2-4}" r="6.5" fill="{TEXT_MUTED}" stroke="#ffffff" stroke-width="1.5" opacity="0.7"/>')
-svg.append(f'<text x="{leg_x2+20}" y="{leg_y2}" font-size="12" fill="{TEXT_SEC}">scalar_gemm (circle)</text>')
-leg_x2 += 20 + 8 * len("scalar_gemm (circle)") + 22
-r = 7.5
-pts = f"{leg_x2+6:.1f},{leg_y2-4-r:.1f} {leg_x2+6+r:.1f},{leg_y2-4:.1f} {leg_x2+6:.1f},{leg_y2-4+r:.1f} {leg_x2+6-r:.1f},{leg_y2-4:.1f}"
-svg.append(f'<polygon points="{pts}" fill="{TEXT_MUTED}" stroke="#ffffff" stroke-width="1.5"/>')
-svg.append(f'<text x="{leg_x2+22}" y="{leg_y2}" font-size="12" fill="{TEXT_SEC}">opt_gemm (diamond)</text>')
+kernel_legend = [("scalar", "scalar_gemm (circle)"), ("opt", "opt_gemm (diamond)"), ("blocked", "opt_gemm_blocked (square)")]
+for kernel, label in kernel_legend:
+    svg.append(marker_svg(kernel, leg_x2 + 6, leg_y2 - 4, TEXT_MUTED))
+    svg.append(f'<text x="{leg_x2+20}" y="{leg_y2}" font-size="12" fill="{TEXT_SEC}">{label}</text>')
+    leg_x2 += 20 + 8 * len(label) + 22
 
-svg.append(f'<text x="{ML}" y="{footnoteY}" font-size="10.5" fill="{TEXT_MUTED}">il=4 rows (scalar fallback) omitted — see table for values. opt_gemm plots one (w,il); it ignores those flags.</text>')
+svg.append(f'<text x="{ML}" y="{footnoteY}" font-size="10.5" fill="{TEXT_MUTED}">il=4 rows (scalar fallback) omitted — see table for values. opt_gemm/opt_gemm_blocked plot one (w,il); they ignore those flags.</text>')
 
 svg.append('</svg>')
 

@@ -243,6 +243,197 @@ void opt_gemm(int m, int n, int k,
     }
 }
 
+void opt_gemm_blocked(int , int , int ,
+                      target_float , const target_float *, int ,
+                      const target_float *, int ,
+                      target_float , target_float *, int ) __attribute__((noinline));
+
+#if M != 16
+#error "opt_gemm_blocked hardcodes a 16-row block (M=16); rebuild with -DM=16 or generalize this function first"
+#endif
+
+/**
+ * Row-blocked GEMM: C = alpha*(A*B) + beta*C
+ * opt_gemm still reloads B[l,:] once per (row, l) -- redundant M=16x across
+ * rows, since B doesn't depend on i at all. This version blocks the entire
+ * M=16 rows into one tile: for each j-block, B[l,:] is loaded exactly once
+ * per l and reused across all 16 rows' accumulators in that same
+ * l-iteration, cutting B's reload factor from 16x down to 1x (matching the
+ * theoretical minimum: B is loaded exactly K times per j-block, period).
+ *
+ * This also sidesteps the need for opt_gemm's separate OPT_GEMM_UNROLL
+ * dependency-chain fix: the 16 independent per-row accumulators (vc0..vc15)
+ * are updated once per l-iteration, so the pipeline already has 16-way
+ * row-level ILP to hide FMA latency, without unrolling l at all.
+ *
+ * Register budget: 16 accumulators + 1 shared B register (+ scalar A
+ * broadcasts, which live in scalar not vector registers) = 17 of RVV's 32
+ * architectural vector registers -- comfortable. Combining this with
+ * opt_gemm's k-unroll would need 16 x OPT_GEMM_UNROLL accumulators, which
+ * doesn't fit for any unroll factor > 1, hence the two techniques are
+ * exercised as separate functions rather than stacked.
+ *
+ * Hardcodes M=16 (this benchmark's fixed row count, like the A/B/C array
+ * sizes above) rather than looping generically over row-blocks of M --
+ * matches this file's existing convention of baking in the compile-time
+ * M/N/K macros rather than handling arbitrary runtime shapes.
+ *
+ * fp16 vs. fp64 intrinsics are selected via #ifdef __riscv_zvfh, same as
+ * opt_gemm.
+ */
+void opt_gemm_blocked(int m, int n, int k,
+                      target_float alpha, const target_float *A, int lda,
+                      const target_float *B, int ldb,
+                      target_float beta, target_float *C, int ldc)
+{
+    for (int j = 0; j < n; ) {
+#if defined(__riscv_zvfh)
+        size_t vl = __riscv_vsetvl_e16m1(n - j);
+            vfloat16m1_t vc0 = __riscv_vfmul_vf_f16m1(__riscv_vle16_v_f16m1(&C[ 0 * ldc + j], vl), beta, vl);
+            vfloat16m1_t vc1 = __riscv_vfmul_vf_f16m1(__riscv_vle16_v_f16m1(&C[ 1 * ldc + j], vl), beta, vl);
+            vfloat16m1_t vc2 = __riscv_vfmul_vf_f16m1(__riscv_vle16_v_f16m1(&C[ 2 * ldc + j], vl), beta, vl);
+            vfloat16m1_t vc3 = __riscv_vfmul_vf_f16m1(__riscv_vle16_v_f16m1(&C[ 3 * ldc + j], vl), beta, vl);
+            vfloat16m1_t vc4 = __riscv_vfmul_vf_f16m1(__riscv_vle16_v_f16m1(&C[ 4 * ldc + j], vl), beta, vl);
+            vfloat16m1_t vc5 = __riscv_vfmul_vf_f16m1(__riscv_vle16_v_f16m1(&C[ 5 * ldc + j], vl), beta, vl);
+            vfloat16m1_t vc6 = __riscv_vfmul_vf_f16m1(__riscv_vle16_v_f16m1(&C[ 6 * ldc + j], vl), beta, vl);
+            vfloat16m1_t vc7 = __riscv_vfmul_vf_f16m1(__riscv_vle16_v_f16m1(&C[ 7 * ldc + j], vl), beta, vl);
+            vfloat16m1_t vc8 = __riscv_vfmul_vf_f16m1(__riscv_vle16_v_f16m1(&C[ 8 * ldc + j], vl), beta, vl);
+            vfloat16m1_t vc9 = __riscv_vfmul_vf_f16m1(__riscv_vle16_v_f16m1(&C[ 9 * ldc + j], vl), beta, vl);
+            vfloat16m1_t vc10 = __riscv_vfmul_vf_f16m1(__riscv_vle16_v_f16m1(&C[10 * ldc + j], vl), beta, vl);
+            vfloat16m1_t vc11 = __riscv_vfmul_vf_f16m1(__riscv_vle16_v_f16m1(&C[11 * ldc + j], vl), beta, vl);
+            vfloat16m1_t vc12 = __riscv_vfmul_vf_f16m1(__riscv_vle16_v_f16m1(&C[12 * ldc + j], vl), beta, vl);
+            vfloat16m1_t vc13 = __riscv_vfmul_vf_f16m1(__riscv_vle16_v_f16m1(&C[13 * ldc + j], vl), beta, vl);
+            vfloat16m1_t vc14 = __riscv_vfmul_vf_f16m1(__riscv_vle16_v_f16m1(&C[14 * ldc + j], vl), beta, vl);
+            vfloat16m1_t vc15 = __riscv_vfmul_vf_f16m1(__riscv_vle16_v_f16m1(&C[15 * ldc + j], vl), beta, vl);
+
+            for (int l = 0; l < k; ++l) {
+                vfloat16m1_t vb = __riscv_vle16_v_f16m1(&B[l * ldb + j], vl);
+                target_float a0 = alpha * A[ 0 * lda + l];
+                target_float a1 = alpha * A[ 1 * lda + l];
+                target_float a2 = alpha * A[ 2 * lda + l];
+                target_float a3 = alpha * A[ 3 * lda + l];
+                target_float a4 = alpha * A[ 4 * lda + l];
+                target_float a5 = alpha * A[ 5 * lda + l];
+                target_float a6 = alpha * A[ 6 * lda + l];
+                target_float a7 = alpha * A[ 7 * lda + l];
+                target_float a8 = alpha * A[ 8 * lda + l];
+                target_float a9 = alpha * A[ 9 * lda + l];
+                target_float a10 = alpha * A[10 * lda + l];
+                target_float a11 = alpha * A[11 * lda + l];
+                target_float a12 = alpha * A[12 * lda + l];
+                target_float a13 = alpha * A[13 * lda + l];
+                target_float a14 = alpha * A[14 * lda + l];
+                target_float a15 = alpha * A[15 * lda + l];
+                vc0 = __riscv_vfmacc_vf_f16m1(vc0, a0, vb, vl);
+                vc1 = __riscv_vfmacc_vf_f16m1(vc1, a1, vb, vl);
+                vc2 = __riscv_vfmacc_vf_f16m1(vc2, a2, vb, vl);
+                vc3 = __riscv_vfmacc_vf_f16m1(vc3, a3, vb, vl);
+                vc4 = __riscv_vfmacc_vf_f16m1(vc4, a4, vb, vl);
+                vc5 = __riscv_vfmacc_vf_f16m1(vc5, a5, vb, vl);
+                vc6 = __riscv_vfmacc_vf_f16m1(vc6, a6, vb, vl);
+                vc7 = __riscv_vfmacc_vf_f16m1(vc7, a7, vb, vl);
+                vc8 = __riscv_vfmacc_vf_f16m1(vc8, a8, vb, vl);
+                vc9 = __riscv_vfmacc_vf_f16m1(vc9, a9, vb, vl);
+                vc10 = __riscv_vfmacc_vf_f16m1(vc10, a10, vb, vl);
+                vc11 = __riscv_vfmacc_vf_f16m1(vc11, a11, vb, vl);
+                vc12 = __riscv_vfmacc_vf_f16m1(vc12, a12, vb, vl);
+                vc13 = __riscv_vfmacc_vf_f16m1(vc13, a13, vb, vl);
+                vc14 = __riscv_vfmacc_vf_f16m1(vc14, a14, vb, vl);
+                vc15 = __riscv_vfmacc_vf_f16m1(vc15, a15, vb, vl);
+            }
+
+            __riscv_vse16_v_f16m1(&C[ 0 * ldc + j], vc0, vl);
+            __riscv_vse16_v_f16m1(&C[ 1 * ldc + j], vc1, vl);
+            __riscv_vse16_v_f16m1(&C[ 2 * ldc + j], vc2, vl);
+            __riscv_vse16_v_f16m1(&C[ 3 * ldc + j], vc3, vl);
+            __riscv_vse16_v_f16m1(&C[ 4 * ldc + j], vc4, vl);
+            __riscv_vse16_v_f16m1(&C[ 5 * ldc + j], vc5, vl);
+            __riscv_vse16_v_f16m1(&C[ 6 * ldc + j], vc6, vl);
+            __riscv_vse16_v_f16m1(&C[ 7 * ldc + j], vc7, vl);
+            __riscv_vse16_v_f16m1(&C[ 8 * ldc + j], vc8, vl);
+            __riscv_vse16_v_f16m1(&C[ 9 * ldc + j], vc9, vl);
+            __riscv_vse16_v_f16m1(&C[10 * ldc + j], vc10, vl);
+            __riscv_vse16_v_f16m1(&C[11 * ldc + j], vc11, vl);
+            __riscv_vse16_v_f16m1(&C[12 * ldc + j], vc12, vl);
+            __riscv_vse16_v_f16m1(&C[13 * ldc + j], vc13, vl);
+            __riscv_vse16_v_f16m1(&C[14 * ldc + j], vc14, vl);
+            __riscv_vse16_v_f16m1(&C[15 * ldc + j], vc15, vl);
+#else
+        size_t vl = __riscv_vsetvl_e64m1(n - j);
+            vfloat64m1_t vc0 = __riscv_vfmul_vf_f64m1(__riscv_vle64_v_f64m1(&C[ 0 * ldc + j], vl), beta, vl);
+            vfloat64m1_t vc1 = __riscv_vfmul_vf_f64m1(__riscv_vle64_v_f64m1(&C[ 1 * ldc + j], vl), beta, vl);
+            vfloat64m1_t vc2 = __riscv_vfmul_vf_f64m1(__riscv_vle64_v_f64m1(&C[ 2 * ldc + j], vl), beta, vl);
+            vfloat64m1_t vc3 = __riscv_vfmul_vf_f64m1(__riscv_vle64_v_f64m1(&C[ 3 * ldc + j], vl), beta, vl);
+            vfloat64m1_t vc4 = __riscv_vfmul_vf_f64m1(__riscv_vle64_v_f64m1(&C[ 4 * ldc + j], vl), beta, vl);
+            vfloat64m1_t vc5 = __riscv_vfmul_vf_f64m1(__riscv_vle64_v_f64m1(&C[ 5 * ldc + j], vl), beta, vl);
+            vfloat64m1_t vc6 = __riscv_vfmul_vf_f64m1(__riscv_vle64_v_f64m1(&C[ 6 * ldc + j], vl), beta, vl);
+            vfloat64m1_t vc7 = __riscv_vfmul_vf_f64m1(__riscv_vle64_v_f64m1(&C[ 7 * ldc + j], vl), beta, vl);
+            vfloat64m1_t vc8 = __riscv_vfmul_vf_f64m1(__riscv_vle64_v_f64m1(&C[ 8 * ldc + j], vl), beta, vl);
+            vfloat64m1_t vc9 = __riscv_vfmul_vf_f64m1(__riscv_vle64_v_f64m1(&C[ 9 * ldc + j], vl), beta, vl);
+            vfloat64m1_t vc10 = __riscv_vfmul_vf_f64m1(__riscv_vle64_v_f64m1(&C[10 * ldc + j], vl), beta, vl);
+            vfloat64m1_t vc11 = __riscv_vfmul_vf_f64m1(__riscv_vle64_v_f64m1(&C[11 * ldc + j], vl), beta, vl);
+            vfloat64m1_t vc12 = __riscv_vfmul_vf_f64m1(__riscv_vle64_v_f64m1(&C[12 * ldc + j], vl), beta, vl);
+            vfloat64m1_t vc13 = __riscv_vfmul_vf_f64m1(__riscv_vle64_v_f64m1(&C[13 * ldc + j], vl), beta, vl);
+            vfloat64m1_t vc14 = __riscv_vfmul_vf_f64m1(__riscv_vle64_v_f64m1(&C[14 * ldc + j], vl), beta, vl);
+            vfloat64m1_t vc15 = __riscv_vfmul_vf_f64m1(__riscv_vle64_v_f64m1(&C[15 * ldc + j], vl), beta, vl);
+
+            for (int l = 0; l < k; ++l) {
+                vfloat64m1_t vb = __riscv_vle64_v_f64m1(&B[l * ldb + j], vl);
+                target_float a0 = alpha * A[ 0 * lda + l];
+                target_float a1 = alpha * A[ 1 * lda + l];
+                target_float a2 = alpha * A[ 2 * lda + l];
+                target_float a3 = alpha * A[ 3 * lda + l];
+                target_float a4 = alpha * A[ 4 * lda + l];
+                target_float a5 = alpha * A[ 5 * lda + l];
+                target_float a6 = alpha * A[ 6 * lda + l];
+                target_float a7 = alpha * A[ 7 * lda + l];
+                target_float a8 = alpha * A[ 8 * lda + l];
+                target_float a9 = alpha * A[ 9 * lda + l];
+                target_float a10 = alpha * A[10 * lda + l];
+                target_float a11 = alpha * A[11 * lda + l];
+                target_float a12 = alpha * A[12 * lda + l];
+                target_float a13 = alpha * A[13 * lda + l];
+                target_float a14 = alpha * A[14 * lda + l];
+                target_float a15 = alpha * A[15 * lda + l];
+                vc0 = __riscv_vfmacc_vf_f64m1(vc0, a0, vb, vl);
+                vc1 = __riscv_vfmacc_vf_f64m1(vc1, a1, vb, vl);
+                vc2 = __riscv_vfmacc_vf_f64m1(vc2, a2, vb, vl);
+                vc3 = __riscv_vfmacc_vf_f64m1(vc3, a3, vb, vl);
+                vc4 = __riscv_vfmacc_vf_f64m1(vc4, a4, vb, vl);
+                vc5 = __riscv_vfmacc_vf_f64m1(vc5, a5, vb, vl);
+                vc6 = __riscv_vfmacc_vf_f64m1(vc6, a6, vb, vl);
+                vc7 = __riscv_vfmacc_vf_f64m1(vc7, a7, vb, vl);
+                vc8 = __riscv_vfmacc_vf_f64m1(vc8, a8, vb, vl);
+                vc9 = __riscv_vfmacc_vf_f64m1(vc9, a9, vb, vl);
+                vc10 = __riscv_vfmacc_vf_f64m1(vc10, a10, vb, vl);
+                vc11 = __riscv_vfmacc_vf_f64m1(vc11, a11, vb, vl);
+                vc12 = __riscv_vfmacc_vf_f64m1(vc12, a12, vb, vl);
+                vc13 = __riscv_vfmacc_vf_f64m1(vc13, a13, vb, vl);
+                vc14 = __riscv_vfmacc_vf_f64m1(vc14, a14, vb, vl);
+                vc15 = __riscv_vfmacc_vf_f64m1(vc15, a15, vb, vl);
+            }
+
+            __riscv_vse64_v_f64m1(&C[ 0 * ldc + j], vc0, vl);
+            __riscv_vse64_v_f64m1(&C[ 1 * ldc + j], vc1, vl);
+            __riscv_vse64_v_f64m1(&C[ 2 * ldc + j], vc2, vl);
+            __riscv_vse64_v_f64m1(&C[ 3 * ldc + j], vc3, vl);
+            __riscv_vse64_v_f64m1(&C[ 4 * ldc + j], vc4, vl);
+            __riscv_vse64_v_f64m1(&C[ 5 * ldc + j], vc5, vl);
+            __riscv_vse64_v_f64m1(&C[ 6 * ldc + j], vc6, vl);
+            __riscv_vse64_v_f64m1(&C[ 7 * ldc + j], vc7, vl);
+            __riscv_vse64_v_f64m1(&C[ 8 * ldc + j], vc8, vl);
+            __riscv_vse64_v_f64m1(&C[ 9 * ldc + j], vc9, vl);
+            __riscv_vse64_v_f64m1(&C[10 * ldc + j], vc10, vl);
+            __riscv_vse64_v_f64m1(&C[11 * ldc + j], vc11, vl);
+            __riscv_vse64_v_f64m1(&C[12 * ldc + j], vc12, vl);
+            __riscv_vse64_v_f64m1(&C[13 * ldc + j], vc13, vl);
+            __riscv_vse64_v_f64m1(&C[14 * ldc + j], vc14, vl);
+            __riscv_vse64_v_f64m1(&C[15 * ldc + j], vc15, vl);
+#endif
+        j += vl;
+    }
+}
+
 void print_matrix(const char *name, target_float *mat, int rows, int cols) {
     printf("Matrix %s:\n", name);
     for (int i = 0; i < rows; i++) {
@@ -252,6 +443,23 @@ void print_matrix(const char *name, target_float *mat, int rows, int cols) {
         printf("\n");
     }
     printf("\n");
+}
+
+/* Compares the current C against the C_ref snapshot taken right after
+ * scalar_gemm ran; prints a relative-tolerance PASS/FAIL verdict. */
+void report_correctness(const char *label) {
+    double max_rel_diff = 0.0;
+    for (int idx = 0; idx < M * N; ++idx) {
+        double ref  = (double)C_ref[idx];
+        double diff = (double)C[idx] - ref;
+        if (diff < 0) diff = -diff;
+        double denom = ref < 0 ? -ref : ref;
+        if (denom < 1.0) denom = 1.0;
+        double rel_diff = diff / denom;
+        if (rel_diff > max_rel_diff) max_rel_diff = rel_diff;
+    }
+    printf("%s vs scalar_gemm: max relative |C - C_ref| = %g (%s, tol 1e-2)\n",
+           label, max_rel_diff, max_rel_diff < 1e-2 ? "PASS" : "FAIL");
 }
 
 int main() {
@@ -320,24 +528,35 @@ int main() {
     print_matrix("C (Result)", C, M, N);
 #endif
 
-    {
-        /* Unrolled opt_gemm sums OPT_GEMM_UNROLL partial accumulators in a
-         * different order than scalar_gemm's strictly sequential l-loop, so
-         * results can differ in the last bit or two (FP addition isn't
-         * associative) — compare with a relative tolerance, not bit-exact. */
-        double max_rel_diff = 0.0;
-        for (int idx = 0; idx < M * N; ++idx) {
-            double ref  = (double)C_ref[idx];
-            double diff = (double)C[idx] - ref;
-            if (diff < 0) diff = -diff;
-            double denom = ref < 0 ? -ref : ref;
-            if (denom < 1.0) denom = 1.0;
-            double rel_diff = diff / denom;
-            if (rel_diff > max_rel_diff) max_rel_diff = rel_diff;
-        }
-        printf("opt_gemm vs scalar_gemm: max relative |C - C_ref| = %g (%s, tol 1e-2)\n",
-               max_rel_diff, max_rel_diff < 1e-2 ? "PASS" : "FAIL");
-    }
+    /* Unrolled/blocked variants sum partial accumulators in a different
+     * order than scalar_gemm's strictly sequential l-loop, so results can
+     * differ in the last bit or two (FP addition isn't associative) —
+     * compare with a relative tolerance, not bit-exact. */
+    report_correctness("opt_gemm");
+
+    printf("counter: mcycle = %llu\n", cycle_count);
+    printf("counter: minstret = %llu\n", inst_count);
+    printf("hpmcounter[3]: Vector = %llu\n", hpmcounter[3]);
+    printf("hpmcounter[4]: VectorLoad = %llu\n", hpmcounter[4]);
+    printf("hpmcounter[5]: VectorStore = %llu\n", hpmcounter[5]);
+
+    printf("\nStarting Row-Blocked GEMM (opt_gemm_blocked)...\n\n");
+
+    cycle_count   = READ_CSR(mcycle);
+    inst_count    = READ_CSR(minstret);
+    hpmcounter[3] = READ_CSR(mhpmcounter3);
+    hpmcounter[4] = READ_CSR(mhpmcounter4);
+    hpmcounter[5] = READ_CSR(mhpmcounter5);
+
+    opt_gemm_blocked(M, N, K, alpha, A, K, B, N, beta, C, N);
+
+    cycle_count   = READ_CSR(mcycle)       - cycle_count;
+    inst_count    = READ_CSR(minstret)     - inst_count;
+    hpmcounter[3] = READ_CSR(mhpmcounter3) - hpmcounter[3];
+    hpmcounter[4] = READ_CSR(mhpmcounter4) - hpmcounter[4];
+    hpmcounter[5] = READ_CSR(mhpmcounter5) - hpmcounter[5];
+
+    report_correctness("opt_gemm_blocked");
 
     printf("counter: mcycle = %llu\n", cycle_count);
     printf("counter: minstret = %llu\n", inst_count);

@@ -4,11 +4,13 @@
 
 This repo measures GEMM kernel performance on RISC-V's Vector extension
 (RVV) across CPU models (gem5 TimingSimpleCPU / MinorCPU / O3CPU, plus
-whisper for functional event counts), two datatypes (FP64, FP16), and two
+whisper for functional event counts), two datatypes (FP64, FP16), and three
 kernel implementations (`scalar_gemm`, the original auto-vectorized triple
-loop; `opt_gemm`, a hand-vectorized rewrite). The core question is a
-roofline one: how close does each configuration get to its hardware's
-compute ceiling, and what's actually stopping it?
+loop; `opt_gemm`, a hand-vectorized rewrite with a register-resident
+accumulator and 8-way unroll; `opt_gemm_blocked`, which additionally blocks
+all rows into one tile to eliminate redundant memory traffic). The core
+question is a roofline one: how close does each configuration get to its
+hardware's compute ceiling, and what's actually stopping it?
 
 > **Note:** the Brain Float series (BF16/BF8) is not covered by this sweep.
 > whisper's ISA string already includes `zfbfmin`/`zvfbfmin`/`zvfbfwma`, and
@@ -21,19 +23,24 @@ compute ceiling, and what's actually stopping it?
 > functionally-only.
 
 **Key findings:**
-- At this problem size (`M=N=K=16` FP64 / `M=16,N=64,K=16` FP16), GEMM is
-  **deeply memory-bound** on every CPU model tested — every measured point
-  lands far left of its compute-roof ridge point (only 0.1–9.4% of peak
-  compute reached; see the roofline chart below).
+- At this problem size (`M=N=K=16` FP64 / `M=16,N=64,K=16` FP16),
+  `scalar_gemm` is **deeply memory-bound** on every CPU model tested —
+  every measured point lands far left of its compute-roof ridge point
+  (only 0.1–5.7% of peak compute reached; see the roofline chart below).
 - **MinorCPU → O3CPU** gives a genuine 2–3× cycle-count speedup even for
   this memory-bound kernel, purely from better overlap of independent
   loads — not from faster compute.
 - **`opt_gemm`** (register-resident accumulator + `fmacc`-style 8-way
-  unroll, mirroring the peak-compute micro-benchmark's own unroll
-  technique) roughly **doubles `roof%`** on every dtype/core combination by
-  fixing redundant memory traffic and breaking a serial dependency chain —
-  but is still far from compute-bound; a redundant reload of `B` across
-  rows (not yet fixed) is the next limiter.
+  unroll) roughly doubles `roof%` on every dtype/core combination by fixing
+  redundant memory traffic and breaking a serial dependency chain, but a
+  redundant reload of `B` across rows remained.
+- **`opt_gemm_blocked`** eliminates that redundant reload (`B` loaded once
+  per `k`-step instead of once per row) and, for FP64/FP16 on MinorCPU,
+  pushes arithmetic intensity **past the ridge point** — the first
+  configuration in this investigation to leave the memory-bound regime
+  entirely. Even so it still only reaches ~12% of compute roof at best;
+  `gemm`'s per-row overhead keeps it well short of a kernel purpose-built
+  for peak throughput like `fmacc`.
 
 ![GEMM roofline: FP64/FP16 × MinorCPU/O3CPU vs. fmacc peak compute](doc/gemm_roofline.svg)
 
@@ -46,7 +53,8 @@ roofline analysis across FP64/FP16 × MinorCPU/O3CPU (the data behind the
 chart above), plotted against the FMACC peak-compute ceilings. Its FP64
 sweep uses this same `M=N=K=16` kernel shape, so the two documents'
 FP64/MinorCPU numbers cross-validate each other exactly. That doc also has
-the full `scalar_gemm` vs. `opt_gemm` comparison summarized above.
+the full `scalar_gemm` vs. `opt_gemm` vs. `opt_gemm_blocked` comparison
+summarized above.
 
 ## test environment
     simulator : gem5 MinorCPU (in-order, pipelined). Alternate configs also

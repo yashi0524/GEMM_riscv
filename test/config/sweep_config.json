@@ -78,5 +78,45 @@
         "kernel": "opt",
         "test_enable": true,
         "peak_gflops": 62.63
+    },
+    "fp64_o3_blocked": {
+        "march": "rv64gcv",
+        "target_float": "double",
+        "widths": [8],
+        "interleave": [1],
+        "gem5_core": "o3",
+        "kernel": "blocked",
+        "test_enable": true,
+        "peak_gflops": 49.97
+    },
+    "fp64_minor_blocked": {
+        "march": "rv64gcv",
+        "target_float": "double",
+        "widths": [8],
+        "interleave": [1],
+        "gem5_core": "minor",
+        "kernel": "blocked",
+        "test_enable": true,
+        "peak_gflops": 15.73
+    },
+    "fp16_o3_blocked": {
+        "march": "rv64gcv_zvfh",
+        "target_float": "_Float16",
+        "widths": [32],
+        "interleave": [1],
+        "gem5_core": "o3",
+        "kernel": "blocked",
+        "test_enable": true,
+        "peak_gflops": 200.1
+    },
+    "fp16_minor_blocked": {
+        "march": "rv64gcv_zvfh",
+        "target_float": "_Float16",
+        "widths": [32],
+        "interleave": [1],
+        "gem5_core": "minor",
+        "kernel": "blocked",
+        "test_enable": true,
+        "peak_gflops": 62.63
     }
 }

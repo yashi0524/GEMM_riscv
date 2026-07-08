@@ -43,24 +43,28 @@
 <text x="718" y="152.9" font-size="11" fill="#c98500" font-weight="700">62.63 GFLOP/s</text>
 <line x1="78" y1="68.1" x2="710" y2="68.1" stroke="#008300" stroke-width="2" stroke-dasharray="2 4" opacity="0.85"/>
 <text x="718" y="72.1" font-size="11" fill="#008300" font-weight="700">200.1 GFLOP/s</text>
-<circle cx="124.4" cy="485.4" r="6.5" fill="#2a78d6" stroke="#ffffff" stroke-width="1.5" opacity="0.7"/>
-<circle cx="124.4" cy="472.0" r="6.5" fill="#2a78d6" stroke="#ffffff" stroke-width="1.5" opacity="0.7"/>
-<circle cx="124.4" cy="458.7" r="6.5" fill="#2a78d6" stroke="#ffffff" stroke-width="1.5" opacity="0.7"/>
-<circle cx="124.4" cy="458.2" r="6.5" fill="#2a78d6" stroke="#ffffff" stroke-width="1.5" opacity="0.7"/>
-<circle cx="124.4" cy="447.0" r="6.5" fill="#2a78d6" stroke="#ffffff" stroke-width="1.5" opacity="0.7"/>
-<circle cx="124.4" cy="418.6" r="6.5" fill="#1baf7a" stroke="#ffffff" stroke-width="1.5" opacity="0.7"/>
-<circle cx="124.4" cy="391.4" r="6.5" fill="#1baf7a" stroke="#ffffff" stroke-width="1.5" opacity="0.7"/>
-<circle cx="124.4" cy="386.4" r="6.5" fill="#1baf7a" stroke="#ffffff" stroke-width="1.5" opacity="0.7"/>
-<circle cx="124.4" cy="390.3" r="6.5" fill="#1baf7a" stroke="#ffffff" stroke-width="1.5" opacity="0.7"/>
+<circle cx="124.4" cy="485.7" r="6.5" fill="#2a78d6" stroke="#ffffff" stroke-width="1.5" opacity="0.7"/>
+<circle cx="124.4" cy="472.5" r="6.5" fill="#2a78d6" stroke="#ffffff" stroke-width="1.5" opacity="0.7"/>
+<circle cx="124.4" cy="458.4" r="6.5" fill="#2a78d6" stroke="#ffffff" stroke-width="1.5" opacity="0.7"/>
+<circle cx="124.4" cy="458.6" r="6.5" fill="#2a78d6" stroke="#ffffff" stroke-width="1.5" opacity="0.7"/>
+<circle cx="124.4" cy="447.5" r="6.5" fill="#2a78d6" stroke="#ffffff" stroke-width="1.5" opacity="0.7"/>
+<circle cx="124.4" cy="418.7" r="6.5" fill="#1baf7a" stroke="#ffffff" stroke-width="1.5" opacity="0.7"/>
+<circle cx="124.4" cy="391.5" r="6.5" fill="#1baf7a" stroke="#ffffff" stroke-width="1.5" opacity="0.7"/>
+<circle cx="124.4" cy="385.7" r="6.5" fill="#1baf7a" stroke="#ffffff" stroke-width="1.5" opacity="0.7"/>
+<circle cx="124.4" cy="390.2" r="6.5" fill="#1baf7a" stroke="#ffffff" stroke-width="1.5" opacity="0.7"/>
 <circle cx="124.4" cy="363.7" r="6.5" fill="#1baf7a" stroke="#ffffff" stroke-width="1.5" opacity="0.7"/>
-<circle cx="261.4" cy="406.7" r="6.5" fill="#c98500" stroke="#ffffff" stroke-width="1.5" opacity="0.7"/>
+<circle cx="261.4" cy="406.6" r="6.5" fill="#c98500" stroke="#ffffff" stroke-width="1.5" opacity="0.7"/>
 <circle cx="212.5" cy="453.3" r="6.5" fill="#c98500" stroke="#ffffff" stroke-width="1.5" opacity="0.7"/>
-<circle cx="261.4" cy="317.4" r="6.5" fill="#008300" stroke="#ffffff" stroke-width="1.5" opacity="0.7"/>
+<circle cx="261.4" cy="317.3" r="6.5" fill="#008300" stroke="#ffffff" stroke-width="1.5" opacity="0.7"/>
 <circle cx="212.5" cy="387.5" r="6.5" fill="#008300" stroke="#ffffff" stroke-width="1.5" opacity="0.7"/>
-<polygon points="225.3,403.4 232.8,410.9 225.3,418.4 217.8,410.9" fill="#2a78d6" stroke="#ffffff" stroke-width="1.5"/>
-<polygon points="225.3,321.2 232.8,328.7 225.3,336.2 217.8,328.7" fill="#1baf7a" stroke="#ffffff" stroke-width="1.5"/>
-<polygon points="362.3,341.6 369.8,349.1 362.3,356.6 354.8,349.1" fill="#c98500" stroke="#ffffff" stroke-width="1.5"/>
-<polygon points="362.3,240.5 369.8,248.0 362.3,255.5 354.8,248.0" fill="#008300" stroke="#ffffff" stroke-width="1.5"/>
+<polygon points="225.3,404.2 232.8,411.7 225.3,419.2 217.8,411.7" fill="#2a78d6" stroke="#ffffff" stroke-width="1.5"/>
+<polygon points="225.3,321.3 232.8,328.8 225.3,336.3 217.8,328.8" fill="#1baf7a" stroke="#ffffff" stroke-width="1.5"/>
+<polygon points="362.3,341.7 369.8,349.2 362.3,356.7 354.8,349.2" fill="#c98500" stroke="#ffffff" stroke-width="1.5"/>
+<polygon points="362.3,240.7 369.8,248.2 362.3,255.7 354.8,248.2" fill="#008300" stroke="#ffffff" stroke-width="1.5"/>
+<rect x="397.2" y="385.8" width="10.4" height="10.4" fill="#2a78d6" stroke="#ffffff" stroke-width="1.5"/>
+<rect x="397.2" y="321.7" width="10.4" height="10.4" fill="#1baf7a" stroke="#ffffff" stroke-width="1.5"/>
+<rect x="534.1" y="330.8" width="10.4" height="10.4" fill="#c98500" stroke="#ffffff" stroke-width="1.5"/>
+<rect x="534.1" y="238.6" width="10.4" height="10.4" fill="#008300" stroke="#ffffff" stroke-width="1.5"/>
 <rect x="78" y="575" width="12" height="12" rx="3" fill="#2a78d6"/>
 <text x="95" y="585" font-size="12" fill="#3d3d3a">FP64 · MinorCPU</text>
 <rect x="241" y="575" width="12" height="12" rx="3" fill="#1baf7a"/>
@@ -71,9 +75,11 @@
 <text x="560" y="585" font-size="12" fill="#3d3d3a">FP16 · O3CPU</text>
 <line x1="682" y1="580" x2="702" y2="580" stroke="#767671" stroke-width="2" stroke-dasharray="4 3"/>
 <text x="708" y="585" font-size="12" fill="#3d3d3a">Memory roof</text>
-<circle cx="84" cy="606" r="6.5" fill="#767671" stroke="#ffffff" stroke-width="1.5" opacity="0.7"/>
+<circle cx="84.0" cy="606.0" r="6.5" fill="#767671" stroke="#ffffff" stroke-width="1.5" opacity="0.7"/>
 <text x="98" y="610" font-size="12" fill="#3d3d3a">scalar_gemm (circle)</text>
 <polygon points="286.0,598.5 293.5,606.0 286.0,613.5 278.5,606.0" fill="#767671" stroke="#ffffff" stroke-width="1.5"/>
-<text x="302" y="610" font-size="12" fill="#3d3d3a">opt_gemm (diamond)</text>
-<text x="78" y="634" font-size="10.5" fill="#767671">il=4 rows (scalar fallback) omitted — see table for values. opt_gemm plots one (w,il); it ignores those flags.</text>
+<text x="300" y="610" font-size="12" fill="#3d3d3a">opt_gemm (diamond)</text>
+<rect x="466.8" y="600.8" width="10.4" height="10.4" fill="#767671" stroke="#ffffff" stroke-width="1.5"/>
+<text x="486" y="610" font-size="12" fill="#3d3d3a">opt_gemm_blocked (square)</text>
+<text x="78" y="634" font-size="10.5" fill="#767671">il=4 rows (scalar fallback) omitted — see table for values. opt_gemm/opt_gemm_blocked plot one (w,il); they ignore those flags.</text>
 </svg>
