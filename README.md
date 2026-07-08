@@ -4,6 +4,12 @@ See [doc/microbenchmark.md](doc/microbenchmark.md) for the FMACC peak-compute
 micro-benchmark (unroll progression, IPC analysis, and why functional-unit
 latency isn't the bottleneck) that backs the peak-compute ceiling used below.
 
+See [doc/gemm_analysis.md](doc/gemm_analysis.md) for the broader `test/sweep.py`
+roofline analysis across FP64/FP16 × MinorCPU/O3CPU, plotted against the
+FMACC peak-compute ceilings above. Its FP64 sweep now uses this same
+`M=N=K=16` kernel shape, so the two documents' FP64/MinorCPU numbers
+cross-validate each other exactly.
+
 ## test environment
     simulator : gem5 MinorCPU (in-order, pipelined). Alternate configs also
                 available: TimingSimpleCPU
@@ -57,19 +63,21 @@ latency isn't the bottleneck) that backs the peak-compute ceiling used below.
     15.73 GFLOP/s (98.3% of the 16.0 GFLOP/s theoretical max), used below as
     the compute ceiling for the gemm roofline analysis.
 
-## roofline analysis  (gemm 16×16 FP64 kernel)
+## roofline analysis  (gemm 16×16 FP64 kernel, gem5 MinorCPU)
 
-    --- FLOPs ---
+    See doc/gemm_analysis.md for the general roofline methodology (FLOPs, AI,
+    ridge point, hardware ceilings sourced from doc/microbenchmark.md) and
+    its extension to FP64/FP16 across MinorCPU/O3CPU via test/sweep.py. This
+    section keeps only what's unique to this specific M=N=K=16 kernel: its
+    exact memory-traffic breakdown, and a CPU-model comparison
+    (TimingSimpleCPU vs MinorCPU) the sweep-based analysis doesn't cover.
+
+    --- FLOPs & memory traffic (derived from whisper VectorLoad/VectorStore) ---
     FLOPs = 2 × M × N × K = 2 × 16 × 16 × 16 = 8,192 FLOP
-
-    --- memory traffic (derived from whisper VectorLoad/VectorStore) ---
     vector element width : 8 × FP64 = 64 bytes per vector instruction (vl=8, VLEN=512)
     bytes loaded  = 1,056 vec loads  × 64 B = 67,584 B
     bytes stored  =   544 vec stores × 64 B = 34,816 B
-    total Q       = 102,400 B
-
-    note: Q is identical to the VLEN=256 run — same data is accessed, just in
-    half as many (but twice as wide) vector instructions.
+    total Q       = 102,400 B  →  AI = 8,192 / 102,400 = 0.080 FLOP/B
 
     VectorLoad breakdown:
       scale step (beta=0)  :  16 rows × 2 j-blocks =   32 vle64
@@ -82,34 +90,12 @@ latency isn't the bottleneck) that backs the peak-compute ceiling used below.
       accum store C        : 256 (i,k) × 2 j-blocks =  512 vse64
       total                :                             544  ✓
 
-    --- arithmetic intensity ---
-    AI = 8,192 FLOP / 102,400 B = 0.080 FLOP/B
-    (AI is VLEN-invariant: same algorithm, same data footprint)
-
-    --- hardware ceilings ---
-    peak compute (measured, FMACC micro-bench, gem5 MinorCPU, unrolled x16 —
-    full derivation and unroll progression in doc/microbenchmark.md):
-      total_ops=10,000 vfmacc, vl=8, FP64 → FLOPs = 160,000
-      gem5 mcycle = 10,170 (loop-only measurement)  →  1.02 cycles/vfmacc
-      peak compute  = (8 × 2 FLOP) / (1.02 cycles / 1 GHz)  = 15.73 GFLOP/s
-      (theoretical max = 8 × 2 × 1 GHz = 16.0 GFLOP/s — x16 reaches 98.3% of it)
-    peak memory BW (DDR3-1600 8x8) = 1600 MT/s × 8 B          = 12.8 GB/s
-
-    --- roofline ---
-    ridge point  = 15.73 GFLOP/s / 12.8 GB/s = 1.229 FLOP/B
-    kernel AI (0.080) < ridge (1.229)  →  MEMORY BOUND (by more than an order
-    of magnitude, now that the compute ceiling reflects a well-pipelined FMA)
-
-    attainable perf = AI × peak_BW = 0.080 × 12.8 GB/s = 1.024 GFLOP/s
-
     --- observed performance (gem5 MinorCPU, VLEN=512, 64KB L1 cache) ---
     T_kernel         = 9,547 cycles / 1 GHz           =   9.55 μs
     achieved FLOP/s  = 8,192 FLOP  / 9.55 μs          = 858.1 MFLOP/s
     achieved BW      = 102,400 B   / 9.55 μs          = 10,727 MB/s = 10.73 GB/s
-
-    --- efficiency ---
-    vs attainable BW ceiling : 858.1 MFLOP/s / 1,024 MFLOP/s = 83.8 %
-    BW utilization            :  10.73 GB/s  /  12.8 GB/s     = 83.8 %
+    efficiency vs attainable BW ceiling (AI × 12.8 GB/s peak = 1.024 GFLOP/s)
+      = 858.1 / 1,024 = 83.8 %  (= BW utilization: 10.73 / 12.8 GB/s)
 
     --- vs TimingSimpleCPU baseline (same VLEN=512, cache config) ---
     mcycle        : 23,641 → 9,547    (2.48× speedup)

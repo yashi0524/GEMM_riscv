@@ -136,7 +136,7 @@ more FLOPs per `vfmacc`. Built via `make fmacc_fp16` (or
 Makefile bakes `-march=rv64gcv_zvfh` into that target's `BENCH_EXTRA_FLAGS`
 (a second `-march=` on the command line wins over the base `rv64gcv`, so no
 caller-side changes were needed — this is the same pattern
-`sweep_fp16.py`/`compare_shapes_fp16.py` use, just baked into the Makefile
+`sweep.py`/`compare_shapes_fp16.py` use, just baked into the Makefile
 target instead of passed by the caller).
 
 **Precision pitfall**: the original linear combine chain (`vc0+vc1`,

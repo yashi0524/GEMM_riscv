@@ -1,0 +1,41 @@
+{
+    "_template": {
+        "interleave": [1, 2, 4],
+        "shape": {"m": 16, "k": 16},
+        "source_A_width_bits": 1024,
+        "gem5_core": "minor",
+        "test_enable": false
+    },
+    "fp64_o3": {
+        "march": "rv64gcv",
+        "target_float": "double",
+        "widths": [4, 8],
+        "gem5_core": "o3",
+        "test_enable": true,
+        "peak_gflops": 49.97
+    },
+    "fp64_minor": {
+        "march": "rv64gcv",
+        "target_float": "double",
+        "widths": [4, 8],
+        "gem5_core": "minor",
+        "test_enable": true,
+        "peak_gflops": 15.73
+    },
+    "fp16_o3": {
+        "march": "rv64gcv_zvfh",
+        "target_float": "_Float16",
+        "widths": [32],
+        "gem5_core": "o3",
+        "test_enable": true,
+        "peak_gflops": 200.1
+    },
+    "fp16_minor": {
+        "march": "rv64gcv_zvfh",
+        "target_float": "_Float16",
+        "widths": [32],
+        "gem5_core": "minor",
+        "test_enable": true,
+        "peak_gflops": 62.63
+    }
+}
