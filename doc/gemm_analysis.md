@@ -15,9 +15,11 @@ with `source_A_width_bits=1024` shared, `il=1` memory traffic (`Q`) comes out
 to the same 102,400 bytes for both dtypes. Memory peak = 12.8 GB/s
 (DDR3-1600 8×8).
 
+![GEMM roofline: FP64/FP16 × MinorCPU/O3CPU vs. fmacc peak compute](gemm_roofline.svg)
+
 An interactive log-log version of this chart (with hover tooltips) is
-available as a Claude artifact; this file is the durable, in-repo copy of the
-same data.
+also available as a Claude artifact; the static plot above and the table
+below are the durable, in-repo copy of the same data.
 
 ## Compute-roof ceilings used
 

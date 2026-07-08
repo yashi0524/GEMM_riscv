@@ -21,6 +21,9 @@
    fmacc/fmacc_fp16 x16-unroll peak-compute results in doc/microbenchmark.md
    (not derived from this sweep) — used for the table's "roof%" column.
 
+All sweep logs, m5out dirs, and the printed summary table are written under
+test/output/ (created if missing) — never directly under test/.
+
 Usage:
   python3 sweep.py          -- run the full sweep
   python3 sweep.py clean    -- remove all sweep output logs and all *_m5out dirs
@@ -35,6 +38,7 @@ import subprocess
 pattern_root       = "/home/ajno5/work/2_pattern/gemm"
 pattern_script     = f"{pattern_root}/script"
 test_dir           = f"{pattern_root}/test"
+output_dir         = f"{test_dir}/output"
 sweep_config_path  = f"{test_dir}/config/sweep_config.json"
 sim_config_whisper = f"{pattern_root}/sim_config/whisper_rv64gcv_config.json"
 
@@ -101,17 +105,22 @@ def sweep_tags():
 def clean():
     removed = []
     for tag in sweep_tags():
-        for f in (f"{test_dir}/sweep_{tag}_whisper.txt",
-                  f"{test_dir}/sweep_{tag}_gem5.txt"):
+        for f in (f"{output_dir}/sweep_{tag}_whisper.txt",
+                  f"{output_dir}/sweep_{tag}_gem5.txt"):
             if os.path.exists(f):
                 os.remove(f)
                 removed.append(f)
-    for entry in os.listdir(test_dir):
-        if entry.endswith("_m5out"):
-            d = os.path.join(test_dir, entry)
-            if os.path.isdir(d):
-                shutil.rmtree(d)
-                removed.append(d)
+    summary_file = f"{output_dir}/sweep_summary.txt"
+    if os.path.exists(summary_file):
+        os.remove(summary_file)
+        removed.append(summary_file)
+    if os.path.isdir(output_dir):
+        for entry in os.listdir(output_dir):
+            if entry.endswith("_m5out"):
+                d = os.path.join(output_dir, entry)
+                if os.path.isdir(d):
+                    shutil.rmtree(d)
+                    removed.append(d)
     if removed:
         print(f"Removed {len(removed)} file(s)/dir(s):")
         for r in removed:
@@ -132,9 +141,9 @@ def get(lst, name):
 def run_one(tag, march, target_float, sizeof_elem, m, n, k, flops, w, il, sim_config_gem5, gem5_core, peak_gflops):
     bench_extra   = (f"-DM={m} -DN={n} -DK={k} -Dtarget_float={target_float} "
                       f"-mllvm -force-vector-width={w} -mllvm -force-vector-interleave={il}")
-    whisper_log   = f"{test_dir}/sweep_{tag}_whisper.txt"
-    gem5_log      = f"{test_dir}/sweep_{tag}_gem5.txt"
-    m5out_dir     = f"{test_dir}/sweep_{tag}_m5out"
+    whisper_log   = f"{output_dir}/sweep_{tag}_whisper.txt"
+    gem5_log      = f"{output_dir}/sweep_{tag}_gem5.txt"
+    m5out_dir     = f"{output_dir}/sweep_{tag}_m5out"
 
     print(f"\n{'='*60}")
     print(f"  {target_float}  core={gem5_core}  width={w}  interleave={il}  (M={m} N={n} K={k})")
@@ -201,9 +210,13 @@ def run_one(tag, march, target_float, sizeof_elem, m, n, k, flops, w, il, sim_co
         "bytes_Q": bytes_q, "AI": ai,
         "cyc_load": cyc_load,
         "MFLOP/s": gflops * 1000 if gflops else None,
+        "Attain_MFLOP/s": attain * 1000 if attain else None,
         "mem_%": mem_eff,
+        "RoofG": peak_gflops,
         "roof_%": roof_eff,
     }
+
+os.makedirs(output_dir, exist_ok=True)
 
 # Merged sweep across all enabled variants, driven by sweep_config.json
 results        = []
@@ -222,19 +235,35 @@ for variant in VARIANTS:
 def fmt(v, spec, fallback="  N/A"):
     return format(v, spec) if v is not None else fallback
 
+def pct(v, width):
+    return f"{v:.1f}%".rjust(width) if v is not None else "N/A".rjust(width)
+
 HDR = (f"{'dtype':>10} {'core':>6} {'m':>3} {'n':>3} {'k':>3} {'w':>4} {'il':>3} | "
        f"{'mcycle':>8} {'minstret':>9} | "
        f"{'VecLoad':>8} {'VecSto':>7} | "
        f"{'Q(B)':>8} {'AI':>6} | "
-       f"{'cyc/ld':>7} {'MFLOP/s':>9} {'mem%':>6} {'roof%':>6}")
+       f"{'cyc/ld':>7} {'MFLOP/s':>9} {'Attain':>9} {'mem%':>7} | "
+       f"{'RoofG':>7} {'roof%':>6}")
 SEP = "-" * len(HDR)
-print(f"\n{SEP}\n{HDR}\n{SEP}")
+lines = [SEP, HDR, SEP]
 for i, r in enumerate(results):
     if i in group_start_at and i != 0:
-        print(SEP)   # separator between variant groups
-    print(f"{r['dtype']:>10} {r['core']:>6} {r['m']:>3} {r['n']:>3} {r['k']:>3} {r['w']:>4} {r['il']:>3} | "
-          f"{fmt(r['mcycle'],   '>8,'):>8} {fmt(r['minstret'],  '>9,'):>9} | "
-          f"{fmt(r['VecLoad'],  '>8,'):>8} {fmt(r['VecStore'],  '>7,'):>7} | "
-          f"{fmt(r['bytes_Q'],  '>8,'):>8} {fmt(r['AI'],        '>6.3f'):>6} | "
-          f"{fmt(r['cyc_load'], '>7.1f'):>7} {fmt(r['MFLOP/s'], '>9.1f'):>9} {fmt(r['mem_%'], '>6.1f'):>6} {fmt(r['roof_%'], '>6.1f'):>6}")
-print(SEP)
+        lines.append(SEP)   # separator between variant groups
+    lines.append(
+        f"{r['dtype']:>10} {r['core']:>6} {r['m']:>3} {r['n']:>3} {r['k']:>3} {r['w']:>4} {r['il']:>3} | "
+        f"{fmt(r['mcycle'],   '>8,'):>8} {fmt(r['minstret'],  '>9,'):>9} | "
+        f"{fmt(r['VecLoad'],  '>8,'):>8} {fmt(r['VecStore'],  '>7,'):>7} | "
+        f"{fmt(r['bytes_Q'],  '>8,'):>8} {fmt(r['AI'],        '>6.3f'):>6} | "
+        f"{fmt(r['cyc_load'], '>7.1f'):>7} {fmt(r['MFLOP/s'], '>9.1f'):>9} "
+        f"{fmt(r['Attain_MFLOP/s'], '>9.1f'):>9} {pct(r['mem_%'], 7)} | "
+        f"{fmt(r['RoofG'],    '>7.2f'):>7} {pct(r['roof_%'], 6)}"
+    )
+lines.append(SEP)
+
+summary = "\n".join(lines)
+print(f"\n{summary}")
+
+summary_file = f"{output_dir}/sweep_summary.txt"
+with open(summary_file, "w") as f:
+    f.write(summary + "\n")
+print(f"\nSummary table written to {summary_file}")
