@@ -42,30 +42,46 @@ qualitative conclusion below.
 
 ## Full sweep results
 
-| Config | core | w  | il | mcycle  | AI (FLOP/B) | GFLOP/s | Compute roof | vs. roof |
-|---|---|---|---|---:|---:|---:|---:|---:|
-| FP64 | minor | 4  | 1 | 16,582  | 0.080 | 0.4940 | 15.73  | 3.14% |
-| FP64 | minor | 4  | 2 | 13,718  | 0.080 | 0.5972 | 15.73  | 3.80% |
-| FP64 | minor | 4  | 4 | 11,184  | 0.080 | 0.7325 | 15.73  | 4.66% |
-| FP64 | minor | 8  | 1 | 11,258  | 0.080 | 0.7277 | 15.73  | 4.63% |
-| FP64 | minor | 8  | 2 | 9,547   | 0.080 | 0.8581 | 15.73  | 5.46% |
-| FP64 | minor | 8  | 4 | 56,457  | N/A*  | 0.1451 | 15.73  | 0.92% |
-| FP64 | o3    | 4  | 1 | 6,415   | 0.080 | 1.2770 | 49.97  | 2.56% |
-| FP64 | o3    | 4  | 2 | 4,285   | 0.080 | 1.9118 | 49.97  | 3.83% |
-| FP64 | o3    | 4  | 4 | 3,921   | 0.080 | 2.0893 | 49.97  | 4.18% |
-| FP64 | o3    | 8  | 1 | 4,333   | 0.080 | 1.8906 | 49.97  | 3.78% |
-| FP64 | o3    | 8  | 2 | 2,863   | 0.080 | 2.8613 | 49.97  | 5.73% |
-| FP64 | o3    | 8  | 4 | 23,265  | N/A*  | 0.3521 | 49.97  | 0.70% |
-| FP16 | minor | 32 | 1 | 21,126  | 0.320 | 1.5511 | 62.63  | 2.48% |
-| FP16 | minor | 32 | 2 | 41,595  | 0.195 | 0.7878 | 62.63  | 1.26% |
-| FP16 | minor | 32 | 4 | 357,290 | N/A*  | 0.0917 | 62.63  | 0.15% |
-| FP16 | o3    | 32 | 1 | 5,899   | 0.320 | 5.5548 | 200.1  | 2.78% |
-| FP16 | o3    | 32 | 2 | 16,452  | 0.195 | 1.9917 | 200.1  | 1.00% |
-| FP16 | o3    | 32 | 4 | 221,897 | N/A*  | 0.1477 | 200.1  | 0.07% |
+`Attainable` is the memory-bound roofline value at this row's AI —
+`AI × 12.8 GB/s` — i.e. the slope-line ceiling that actually applies here,
+since every row's AI sits far left of its ridge point (see below). `mem%` is
+achieved GFLOP/s against *that* ceiling, and `roof%` is achieved GFLOP/s
+against the compute-roof ceiling from the table above; `roof% = mem% ×
+(AI / ridge_point)`, i.e. `roof%` is just `mem%` rescaled by how far below
+the ridge point this kernel's AI sits.
+
+| Config | core | w  | il | mcycle  | AI (FLOP/B) | GFLOP/s | Attainable | mem%   | Compute roof | roof% |
+|---|---|---|---|---:|---:|---:|---:|---:|---:|---:|
+| FP64 | minor | 4  | 1 | 16,582  | 0.080 | 0.4940 | 1.024 | 48.24%  | 15.73  | 3.14% |
+| FP64 | minor | 4  | 2 | 13,718  | 0.080 | 0.5972 | 1.024 | 58.32%  | 15.73  | 3.80% |
+| FP64 | minor | 4  | 4 | 11,184  | 0.080 | 0.7325 | 1.024 | 71.53%  | 15.73  | 4.66% |
+| FP64 | minor | 8  | 1 | 11,258  | 0.080 | 0.7277 | 1.024 | 71.06%  | 15.73  | 4.63% |
+| FP64 | minor | 8  | 2 | 9,547   | 0.080 | 0.8581 | 1.024 | 83.80%  | 15.73  | 5.46% |
+| FP64 | minor | 8  | 4 | 56,457  | N/A*  | 0.1451 | N/A*  | N/A*    | 15.73  | 0.92% |
+| FP64 | o3    | 4  | 1 | 6,415   | 0.080 | 1.2770 | 1.024 | 124.71% | 49.97  | 2.56% |
+| FP64 | o3    | 4  | 2 | 4,285   | 0.080 | 1.9118 | 1.024 | 186.70% | 49.97  | 3.83% |
+| FP64 | o3    | 4  | 4 | 3,921   | 0.080 | 2.0893 | 1.024 | 204.03% | 49.97  | 4.18% |
+| FP64 | o3    | 8  | 1 | 4,333   | 0.080 | 1.8906 | 1.024 | 184.63% | 49.97  | 3.78% |
+| FP64 | o3    | 8  | 2 | 2,863   | 0.080 | 2.8613 | 1.024 | 279.42% | 49.97  | 5.73% |
+| FP64 | o3    | 8  | 4 | 23,265  | N/A*  | 0.3521 | N/A*  | N/A*    | 49.97  | 0.70% |
+| FP16 | minor | 32 | 1 | 21,126  | 0.320 | 1.5511 | 4.096 | 37.87%  | 62.63  | 2.48% |
+| FP16 | minor | 32 | 2 | 41,595  | 0.195 | 0.7878 | 2.496 | 31.56%  | 62.63  | 1.26% |
+| FP16 | minor | 32 | 4 | 357,290 | N/A*  | 0.0917 | N/A*  | N/A*    | 62.63  | 0.15% |
+| FP16 | o3    | 32 | 1 | 5,899   | 0.320 | 5.5548 | 4.096 | 135.61% | 200.1  | 2.78% |
+| FP16 | o3    | 32 | 2 | 16,452  | 0.195 | 1.9917 | 2.496 | 79.79%  | 200.1  | 1.00% |
+| FP16 | o3    | 32 | 4 | 221,897 | N/A*  | 0.1477 | N/A*  | N/A*    | 200.1  | 0.07% |
 
 \* `il=4` rows compiled to scalar code (no vector load/store instructions
 retired), so arithmetic intensity is undefined on this vector-AI axis;
-GFLOP/s and roof-% are still shown for reference.
+GFLOP/s and roof-% are still shown for reference, but `Attainable`/`mem%`
+have no defined value without a vector AI.
+
+**`mem% > 100%` on every O3CPU row** is not a measurement error: this
+kernel's working set (~6–16 KB of A/B/C) fits entirely in the 64 KB L1
+cache, so O3CPU's real sustained bandwidth is well above the 12.8 GB/s
+DRAM-peak figure that `Attainable` assumes — meaning O3 isn't actually
+bandwidth-bound on this kernel at all, unlike MinorCPU where `mem%` stays
+under 100% and roughly tracks classic roofline behavior.
 
 FP64's `minor, w=8, il=2` row (mcycle=9,547) is the exact same kernel
 documented in [../README.md](../README.md)'s single-config roofline
