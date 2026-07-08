@@ -5,8 +5,13 @@ micro-benchmark (unroll progression, IPC analysis, and why functional-unit
 latency isn't the bottleneck) that backs the peak-compute ceiling used below.
 
 ## test environment
-    simulator : gem5 MinorCPU (in-order, pipelined; TimingSimpleCPU config also
-                available at sim_config/gem5_riscv_demo_riscv_baremetal_semihost.py)
+    simulator : gem5 MinorCPU (in-order, pipelined). Alternate configs also
+                available: TimingSimpleCPU
+                (sim_config/gem5_riscv_demo_riscv_baremetal_semihost.py) and
+                O3CPU, out-of-order
+                (sim_config/gem5_riscv_demo_riscv_baremetal_semihost_o3.py —
+                see doc/microbenchmark.md for a comparison and an important
+                caveat about its default vector-FMA latency).
     ISA       : RV64GCV  (VLEN=512 bits, ELEN=64 bits)
     clock     : 1 GHz
     cache     : 64 KB L1 I-cache + 64 KB L1 D-cache (4-way, 2-cycle latency)

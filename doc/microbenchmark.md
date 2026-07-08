@@ -170,6 +170,95 @@ lanes or internal element-serialization a real vector unit's datapath width
 might impose. Take the exact 4× scaling as a property of this timing model,
 not a guarantee that real FP16 vector hardware is always 4× FP64 hardware.
 
+## O3CPU: what changes with out-of-order execution
+
+`sim_config/gem5_riscv_demo_riscv_baremetal_semihost_o3.py` swaps in
+`RiscvO3CPU` (same system/cache setup otherwise). It needs no whisper
+changes either — whisper has no CPU-microarchitecture model at all, so it's
+identical regardless of which gem5 CPU config is used.
+
+Results (gem5, same binaries as above, ITERS=10000):
+
+| workload | MinorCPU mcycle | O3CPU mcycle | speedup |
+|---|---|---|---|
+| gemm (M=N=K=16) | 9,547 | 2,863 | 3.34× |
+| fmacc serial (1 accumulator) | 60,054 | 10,062 | 5.97× |
+| fmacc x16 (FP64) | 10,170 | 3,202 | 3.18× |
+| fmacc_fp16 x16 | 10,219 | 3,198 | 3.20× |
+
+`gemm`'s 3.34× is a fair architectural comparison: O3's out-of-order
+scheduling (32-entry load/store queues, 8-wide fetch/decode/issue/commit,
+large ROB) overlaps independent loads far more aggressively than Minor's
+narrow 2-wide in-order pipeline, while both use the *same* cache model
+(identical `Cache()` params) — so the speedup reflects real scheduling
+capability, not a cache/memory timing difference.
+
+**`fmacc`'s numbers need a caveat, though.** The serial version — a single,
+totally unbroken dependency chain, the same code that stalled MinorCPU
+regardless of FU opLat — runs at 1.006 cycles/vfmacc under O3CPU, i.e.
+almost as fast as MinorCPU's fully-unrolled x16 (1.02 cycles/vfmacc). That's
+suspiciously good for a true RAW dependency chain, so we checked the
+instantiated config directly:
+
+```
+FUList[3]/opList[1]  FloatMultAcc      opLat=5   (scalar FP FMA)
+FUList[5]/opList[20] SimdFloatMultAcc  opLat=1   (vfmacc — this is what we use)
+```
+
+O3's stock `SIMD_Unit` FU pool (`cpu/o3/FuncUnitConfig.py`) doesn't override
+`opLat` for `SimdFloatMultAcc`, so it falls back to `OpDesc`'s default of
+**1 cycle** — 5-6× more optimistic than Minor's deliberately-configured
+`MinorDefaultFloatSimdFU` (`opLat=6`) or even O3's own scalar `FloatMultAcc`
+(`opLat=5`). This is a gap in gem5's *default* O3 config for RVV.
+
+**Fixing it took two tries.** The first attempt set `system.cpu.fuPool =
+CustomFUPool()` directly — this ran without error and even showed up in
+`config.json`, but had *zero* effect on timing (opLat=5/6 gave the exact
+same cycle counts as the unmodified default). Reason: `fuPool` isn't
+actually a declared `BaseO3CPU` parameter at all — gem5 silently accepts
+attribute assignments of SimObject values under any name and records them as
+orphan child nodes in the config tree, even when nothing in the C++ model
+ever reads that attribute. The functional-unit pool O3 actually uses lives
+on each `IQUnit` inside `system.cpu.instQueues` (`cpu/o3/IQUnit.py`:
+`fuPool = Param.FUPool(DefaultFUPool(), ...)`), so the fix was:
+
+```python
+system.cpu.instQueues = [IQUnit(fuPool=CustomFUPool())]
+```
+
+Confirmed via `config.json` afterward: exactly one `fuPool` reference now,
+showing the overridden value. (`sim_config/..._o3.py` has the full
+`CustomFUPool`/`CustomSIMDUnit` definitions, gated behind the
+`O3_SIMD_FMA_OPLAT` env var, default `1` — unchanged stock behavior unless
+overridden.)
+
+**Results with the fix, `O3_SIMD_FMA_OPLAT` matched to Minor's `opLat=6`:**
+
+| workload | Minor (opLat=6) | O3 (opLat=1, stock) | O3 (opLat=6, matched) | O3 vs Minor, matched |
+|---|---|---|---|---|
+| fmacc serial | 60,054 | 10,062 | **60,042** | **1.00×** |
+| fmacc x16 | 10,170 | 3,202 | **3,822** | **2.66×** |
+
+With latency actually matched, the serial chain runs at essentially
+*identical* speed on both CPU models (60,042 vs 60,054) — exactly what
+physics predicts: out-of-order execution cannot parallelize a genuine RAW
+dependency chain: there's no independent work to reorder around, so OoO
+buys nothing. The stock 5.97× "speedup" reported earlier was purely the
+opLat=1-vs-6 modeling gap, not a real OoO effect.
+
+The x16 case is different: even with opLat matched at 6, O3 is still
+**2.66× faster than Minor** (3,822 vs 10,170) — this is a genuine,
+verified OoO advantage, coming from O3's 4 `SIMD_Unit` instances (vs
+Minor's 1) actually running 4 of the 16 independent accumulator chains in
+parallel, something a latency parameter alone can't fake.
+
+One more data point along the way: at `opLat=5`, x16 measured identically
+to `opLat=1` (3,202 both) — 16 independent chains over 4 ports (4 chains/
+port) is enough instruction-level parallelism to fully hide up to ~5 cycles
+of latency, but not quite enough to fully hide 6 (3,822, a real increase).
+That crossover is itself informative: it's the point where available ILP
+stops being "more than enough" and starts being "the binding constraint."
+
 ## Takeaway
 
 Only load/store-bound kernels like `gemm` benefited from MinorCPU's
@@ -179,5 +268,17 @@ could benefit too — and even then, its ceiling is set by the *count* of
 float/SIMD functional units, not just the pipeline's issue width. The x16,
 1-FU, FP64 result (15.73 GFLOP/s) is the peak-compute ceiling used in the
 [gemm roofline analysis](../README.md), since it reflects MinorCPU's actual
-default configuration and the `gemm` kernel's own dtype; the 2-FU and FP16
-results are diagnostic data points, not changes to that default.
+default configuration and the `gemm` kernel's own dtype; the 2-FU, FP16, and
+O3CPU results are diagnostic data points, not changes to that default.
+
+The O3CPU investigation is a double lesson: (1) always check a timing
+model's *actual instantiated* functional-unit latencies before trusting a
+cross-CPU-model comparison — gem5's stock O3 config quietly assumes 1-cycle
+vector FMA, which inflated the naive comparison 5-6×; and (2) verify a
+config override actually reaches the model that reads it — an assignment
+that "runs fine and shows up in config.json" is not proof it did anything,
+since gem5 will silently accept SimObject attributes under names that
+aren't real parameters. With both fixed, the fair result stands: `gemm`'s
+OoO speedup (3.34×) and `fmacc` x16's (2.66×) are real, driven by wider
+memory scheduling and more execution ports respectively; `fmacc` serial's
+apparent 5.97× speedup was not real at all.
