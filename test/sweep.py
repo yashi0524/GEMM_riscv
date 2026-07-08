@@ -1,14 +1,13 @@
 #!/usr/bin/env python3
 """Multi-variant flag sweep: -force-vector-width x -force-vector-interleave,
    per variant, driven by test/config/sweep_config.json.
-   Each variant (e.g. "fp64_o3", "fp64_minor", "fp16_o3", "fp16_minor") gets
-   its own march/target_float/widths/interleave/shape/gem5_core/test_enable/
+   Each variant (e.g. "fp64_o3", "fp64_minor", "fp64_minor_opt") gets its own
+   march/target_float/widths/interleave/shape/gem5_core/kernel/test_enable/
    peak_gflops. A "_template" entry holds defaults shared across variants;
    each variant config is template-then-variant shallow-merged, so a variant
    only needs to list the fields where it differs from (or is missing from)
-   the template. By default the "*_o3" variants are enabled and "*_minor"
-   disabled, so the two dtypes can be swept side by side without also
-   doubling runs per core.
+   the template. By default the "*_o3"/"*_minor" and their "*_opt" pairs are
+   all enabled, so scalar_gemm and opt_gemm can be compared side by side.
    N normally derives as source_A_width_bits / data_format (data_format =
    the element width in bits, e.g. 64 for fp64, 16 for fp16); "shape" gives
    M/K explicitly (or both default to N for a square shape if "shape" is
@@ -16,10 +15,24 @@
    — the default template sets shape M=N=K=16 for every variant this way.
    gem5_core selects the gem5 CPU model per variant: "timing" (RiscvTimingSimpleCPU),
    "minor" (RiscvMinorCPU), or "o3" (RiscvO3CPU).
+   kernel: "scalar" (default) or "opt" — src/gemm.c's main() always runs
+   scalar_gemm then opt_gemm in the same binary/run, printing two counter
+   blocks in row order; "kernel" just selects which block's counters this
+   variant reads (see KERNEL_OCCURRENCE), it doesn't change what's built.
+   Note: opt_gemm is hand-vectorized with explicit RVV intrinsics (vl from
+   hardware vlmax via vsetvl, unroll fixed at compile time by
+   OPT_GEMM_UNROLL) — it ignores -force-vector-width/-interleave entirely,
+   so "*_opt" variants sweep a single (width, interleave) pair that matches
+   the dtype's real vlmax (8 for fp64, 32 for fp16); sweeping those flags
+   for opt_gemm would be both redundant (no codegen difference) and wrong
+   (bytes_per_vec below assumes the swept width matches the kernel's actual
+   vl, which is only true for the scalar_gemm/auto-vectorized case).
    test_enable: true/false toggles whether a variant's sweep runs at all.
    peak_gflops: the compute-roof ceiling for this variant, taken from the
    fmacc/fmacc_fp16 x16-unroll peak-compute results in doc/microbenchmark.md
-   (not derived from this sweep) — used for the table's "roof%" column.
+   (not derived from this sweep, and the same for a dtype/core regardless of
+   kernel, since it's a hardware property) — used for the table's "roof%"
+   column.
 
 All sweep logs, m5out dirs, and the printed summary table are written under
 test/output/ (created if missing) — never directly under test/.
@@ -56,6 +69,11 @@ PEAK_BW  = 12.8   # GB/s  (DDR3-1600 8x8)
 
 SIZEOF_BY_TARGET_FLOAT = {"double": 8, "_Float16": 2}
 
+# src/gemm.c's main() runs scalar_gemm then opt_gemm, each printing its own
+# counter block — this picks which occurrence (0=first/scalar, 1=second/opt)
+# a variant's counters come from.
+KERNEL_OCCURRENCE = {"scalar": 0, "opt": 1}
+
 TEMPLATE_KEY = "_template"
 
 def load_sweep_cfg(path):
@@ -91,6 +109,8 @@ def variant_params(variant):
         "gem5_core":    cfg["gem5_core"],
         "sim_config_gem5": GEM5_CORE_CONFIGS[cfg["gem5_core"]],
         "peak_gflops":  cfg["peak_gflops"],
+        "kernel":       cfg.get("kernel", "scalar"),
+        "occurrence":   KERNEL_OCCURRENCE[cfg.get("kernel", "scalar")],
     }
 
 binary = f"{test_dir}/gemm_riscv"
@@ -132,13 +152,13 @@ if len(sys.argv) > 1 and sys.argv[1] == "clean":
     clean()
     sys.exit(0)
 
-def get(lst, name):
-    for d in lst:
-        if d["name"] == name:
-            return int(d["value"])
+def get(lst, name, occurrence=0):
+    matches = [d for d in lst if d["name"] == name]
+    if occurrence < len(matches):
+        return int(matches[occurrence]["value"])
     return None
 
-def run_one(tag, march, target_float, sizeof_elem, m, n, k, flops, w, il, sim_config_gem5, gem5_core, peak_gflops):
+def run_one(tag, march, target_float, sizeof_elem, m, n, k, flops, w, il, sim_config_gem5, gem5_core, peak_gflops, kernel, occurrence):
     bench_extra   = (f"-DM={m} -DN={n} -DK={k} -Dtarget_float={target_float} "
                       f"-mllvm -force-vector-width={w} -mllvm -force-vector-interleave={il}")
     whisper_log   = f"{output_dir}/sweep_{tag}_whisper.txt"
@@ -146,7 +166,7 @@ def run_one(tag, march, target_float, sizeof_elem, m, n, k, flops, w, il, sim_co
     m5out_dir     = f"{output_dir}/sweep_{tag}_m5out"
 
     print(f"\n{'='*60}")
-    print(f"  {target_float}  core={gem5_core}  width={w}  interleave={il}  (M={m} N={n} K={k})")
+    print(f"  {target_float}  core={gem5_core}  kernel={kernel}  width={w}  interleave={il}  (M={m} N={n} K={k})")
     print(f"{'='*60}")
 
     # Build
@@ -188,10 +208,10 @@ def run_one(tag, march, target_float, sizeof_elem, m, n, k, flops, w, il, sim_co
     parser.log_parse(whisper_log, "whisper")
     parser.log_parse(gem5_log,    "gem5")
 
-    mcycle    = get(parser.result["counter"], "mcycle")
-    minstret  = get(parser.result["counter"], "minstret")
-    vec_load  = get(parser.result["hpm"],     "VectorLoad")
-    vec_store = get(parser.result["hpm"],     "VectorStore")
+    mcycle    = get(parser.result["counter"], "mcycle",     occurrence)
+    minstret  = get(parser.result["counter"], "minstret",   occurrence)
+    vec_load  = get(parser.result["hpm"],     "VectorLoad",  occurrence)
+    vec_store = get(parser.result["hpm"],     "VectorStore", occurrence)
 
     bytes_per_vec = w * sizeof_elem
     total_vec_mem = (vec_load or 0) + (vec_store or 0)
@@ -204,7 +224,7 @@ def run_one(tag, march, target_float, sizeof_elem, m, n, k, flops, w, il, sim_co
     roof_eff      = (gflops / peak_gflops) * 100  if gflops         else None
 
     return {
-        "dtype": target_float, "core": gem5_core, "m": m, "n": n, "k": k, "w": w, "il": il,
+        "dtype": target_float, "core": gem5_core, "kernel": kernel, "m": m, "n": n, "k": k, "w": w, "il": il,
         "mcycle": mcycle, "minstret": minstret,
         "VecLoad": vec_load, "VecStore": vec_store,
         "bytes_Q": bytes_q, "AI": ai,
@@ -229,7 +249,8 @@ for variant in VARIANTS:
             tag = f"{variant}_w{w}_il{il}"
             results.append(run_one(tag, p["march"], p["target_float"], p["sizeof"],
                                     p["m"], p["n"], p["k"], p["flops"], w, il,
-                                    p["sim_config_gem5"], p["gem5_core"], p["peak_gflops"]))
+                                    p["sim_config_gem5"], p["gem5_core"], p["peak_gflops"],
+                                    p["kernel"], p["occurrence"]))
 
 # Summary table
 def fmt(v, spec, fallback="  N/A"):
@@ -238,7 +259,7 @@ def fmt(v, spec, fallback="  N/A"):
 def pct(v, width):
     return f"{v:.1f}%".rjust(width) if v is not None else "N/A".rjust(width)
 
-HDR = (f"{'dtype':>10} {'core':>6} {'m':>3} {'n':>3} {'k':>3} {'w':>4} {'il':>3} | "
+HDR = (f"{'dtype':>10} {'core':>6} {'kernel':>7} {'m':>3} {'n':>3} {'k':>3} {'w':>4} {'il':>3} | "
        f"{'mcycle':>8} {'minstret':>9} | "
        f"{'VecLoad':>8} {'VecSto':>7} | "
        f"{'Q(B)':>8} {'AI':>6} | "
@@ -250,7 +271,7 @@ for i, r in enumerate(results):
     if i in group_start_at and i != 0:
         lines.append(SEP)   # separator between variant groups
     lines.append(
-        f"{r['dtype']:>10} {r['core']:>6} {r['m']:>3} {r['n']:>3} {r['k']:>3} {r['w']:>4} {r['il']:>3} | "
+        f"{r['dtype']:>10} {r['core']:>6} {r['kernel']:>7} {r['m']:>3} {r['n']:>3} {r['k']:>3} {r['w']:>4} {r['il']:>3} | "
         f"{fmt(r['mcycle'],   '>8,'):>8} {fmt(r['minstret'],  '>9,'):>9} | "
         f"{fmt(r['VecLoad'],  '>8,'):>8} {fmt(r['VecStore'],  '>7,'):>7} | "
         f"{fmt(r['bytes_Q'],  '>8,'):>8} {fmt(r['AI'],        '>6.3f'):>6} | "

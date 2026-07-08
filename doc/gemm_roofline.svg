@@ -1,71 +1,79 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 900 660" font-family="Helvetica, Arial, sans-serif">
-<rect x="0" y="0" width="900" height="660" fill="#ffffff"/>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 900 654" font-family="Helvetica, Arial, sans-serif">
+<rect x="0" y="0" width="900" height="654" fill="#ffffff"/>
 <text x="78" y="22" font-size="15" fill="#111111" font-weight="700">GEMM roofline: FP64/FP16 &#215; MinorCPU/O3CPU vs. fmacc peak compute</text>
-<line x1="78.0" y1="40" x2="78.0" y2="564" stroke="#e4e3dd" stroke-width="1"/>
-<text x="78.0" y="584" font-size="12" fill="#767671" text-anchor="middle">0.05</text>
-<line x1="146.5" y1="40" x2="146.5" y2="564" stroke="#e4e3dd" stroke-width="1"/>
-<text x="146.5" y="584" font-size="12" fill="#767671" text-anchor="middle">0.1</text>
-<line x1="255.0" y1="40" x2="255.0" y2="564" stroke="#e4e3dd" stroke-width="1"/>
-<text x="255.0" y="584" font-size="12" fill="#767671" text-anchor="middle">0.3</text>
-<line x1="374.0" y1="40" x2="374.0" y2="564" stroke="#e4e3dd" stroke-width="1"/>
-<text x="374.0" y="584" font-size="12" fill="#767671" text-anchor="middle">1</text>
-<line x1="482.5" y1="40" x2="482.5" y2="564" stroke="#e4e3dd" stroke-width="1"/>
-<text x="482.5" y="584" font-size="12" fill="#767671" text-anchor="middle">3</text>
-<line x1="601.5" y1="40" x2="601.5" y2="564" stroke="#e4e3dd" stroke-width="1"/>
-<text x="601.5" y="584" font-size="12" fill="#767671" text-anchor="middle">10</text>
-<line x1="710.0" y1="40" x2="710.0" y2="564" stroke="#e4e3dd" stroke-width="1"/>
-<text x="710.0" y="584" font-size="12" fill="#767671" text-anchor="middle">30</text>
-<line x1="78" y1="564.0" x2="710" y2="564.0" stroke="#e4e3dd" stroke-width="1"/>
-<text x="68" y="568.0" font-size="12" fill="#767671" text-anchor="end">0.3</text>
-<line x1="78" y1="472.7" x2="710" y2="472.7" stroke="#e4e3dd" stroke-width="1"/>
-<text x="68" y="476.7" font-size="12" fill="#767671" text-anchor="end">1</text>
-<line x1="78" y1="389.3" x2="710" y2="389.3" stroke="#e4e3dd" stroke-width="1"/>
-<text x="68" y="393.3" font-size="12" fill="#767671" text-anchor="end">3</text>
-<line x1="78" y1="298.0" x2="710" y2="298.0" stroke="#e4e3dd" stroke-width="1"/>
-<text x="68" y="302.0" font-size="12" fill="#767671" text-anchor="end">10</text>
-<line x1="78" y1="214.7" x2="710" y2="214.7" stroke="#e4e3dd" stroke-width="1"/>
-<text x="68" y="218.7" font-size="12" fill="#767671" text-anchor="end">30</text>
-<line x1="78" y1="123.3" x2="710" y2="123.3" stroke="#e4e3dd" stroke-width="1"/>
-<text x="68" y="127.3" font-size="12" fill="#767671" text-anchor="end">100</text>
+<line x1="78.0" y1="40" x2="78.0" y2="520" stroke="#e4e3dd" stroke-width="1"/>
+<text x="78.0" y="540" font-size="12" fill="#767671" text-anchor="middle">0.05</text>
+<line x1="146.5" y1="40" x2="146.5" y2="520" stroke="#e4e3dd" stroke-width="1"/>
+<text x="146.5" y="540" font-size="12" fill="#767671" text-anchor="middle">0.1</text>
+<line x1="255.0" y1="40" x2="255.0" y2="520" stroke="#e4e3dd" stroke-width="1"/>
+<text x="255.0" y="540" font-size="12" fill="#767671" text-anchor="middle">0.3</text>
+<line x1="374.0" y1="40" x2="374.0" y2="520" stroke="#e4e3dd" stroke-width="1"/>
+<text x="374.0" y="540" font-size="12" fill="#767671" text-anchor="middle">1</text>
+<line x1="482.5" y1="40" x2="482.5" y2="520" stroke="#e4e3dd" stroke-width="1"/>
+<text x="482.5" y="540" font-size="12" fill="#767671" text-anchor="middle">3</text>
+<line x1="601.5" y1="40" x2="601.5" y2="520" stroke="#e4e3dd" stroke-width="1"/>
+<text x="601.5" y="540" font-size="12" fill="#767671" text-anchor="middle">10</text>
+<line x1="710.0" y1="40" x2="710.0" y2="520" stroke="#e4e3dd" stroke-width="1"/>
+<text x="710.0" y="540" font-size="12" fill="#767671" text-anchor="middle">30</text>
+<line x1="78" y1="520.0" x2="710" y2="520.0" stroke="#e4e3dd" stroke-width="1"/>
+<text x="68" y="524.0" font-size="12" fill="#767671" text-anchor="end">0.3</text>
+<line x1="78" y1="436.3" x2="710" y2="436.3" stroke="#e4e3dd" stroke-width="1"/>
+<text x="68" y="440.3" font-size="12" fill="#767671" text-anchor="end">1</text>
+<line x1="78" y1="360.0" x2="710" y2="360.0" stroke="#e4e3dd" stroke-width="1"/>
+<text x="68" y="364.0" font-size="12" fill="#767671" text-anchor="end">3</text>
+<line x1="78" y1="276.3" x2="710" y2="276.3" stroke="#e4e3dd" stroke-width="1"/>
+<text x="68" y="280.3" font-size="12" fill="#767671" text-anchor="end">10</text>
+<line x1="78" y1="200.0" x2="710" y2="200.0" stroke="#e4e3dd" stroke-width="1"/>
+<text x="68" y="204.0" font-size="12" fill="#767671" text-anchor="end">30</text>
+<line x1="78" y1="116.3" x2="710" y2="116.3" stroke="#e4e3dd" stroke-width="1"/>
+<text x="68" y="120.3" font-size="12" fill="#767671" text-anchor="end">100</text>
 <line x1="78" y1="40.0" x2="710" y2="40.0" stroke="#e4e3dd" stroke-width="1"/>
 <text x="68" y="44.0" font-size="12" fill="#767671" text-anchor="end">300</text>
-<line x1="78" y1="564" x2="710" y2="564" stroke="#b9b8b1" stroke-width="1"/>
-<line x1="78" y1="40" x2="78" y2="564" stroke="#b9b8b1" stroke-width="1"/>
-<text x="394.0" y="604" font-size="13" fill="#3d3d3a" text-anchor="middle">Arithmetic intensity (FLOP / byte, log scale)</text>
-<text x="20" y="302.0" font-size="13" fill="#3d3d3a" text-anchor="middle" transform="rotate(-90 20 302.0)">Achieved performance (GFLOP/s, log scale)</text>
-<line x1="78.0" y1="506.5" x2="685.6" y2="40.0" stroke="#767671" stroke-width="2" stroke-dasharray="5 4"/>
+<line x1="78" y1="520" x2="710" y2="520" stroke="#b9b8b1" stroke-width="1"/>
+<line x1="78" y1="40" x2="78" y2="520" stroke="#b9b8b1" stroke-width="1"/>
+<text x="394.0" y="560" font-size="13" fill="#3d3d3a" text-anchor="middle">Arithmetic intensity (FLOP / byte, log scale)</text>
+<text x="20" y="280.0" font-size="13" fill="#3d3d3a" text-anchor="middle" transform="rotate(-90 20 280.0)">Achieved performance (GFLOP/s, log scale)</text>
+<line x1="78.0" y1="467.4" x2="685.6" y2="40.0" stroke="#767671" stroke-width="2" stroke-dasharray="5 4"/>
 <text x="679.6" y="32.0" font-size="11.5" fill="#3d3d3a" text-anchor="end">memory roof (12.8 GB/s)</text>
-<line x1="78" y1="263.6" x2="710" y2="263.6" stroke="#2a78d6" stroke-width="2" stroke-dasharray="2 4" opacity="0.85"/>
-<text x="718" y="267.6" font-size="11" fill="#2a78d6" font-weight="700">15.73 GFLOP/s</text>
-<line x1="78" y1="176.0" x2="710" y2="176.0" stroke="#1baf7a" stroke-width="2" stroke-dasharray="2 4" opacity="0.85"/>
-<text x="718" y="180.0" font-size="11" fill="#1baf7a" font-weight="700">49.97 GFLOP/s</text>
-<line x1="78" y1="158.8" x2="710" y2="158.8" stroke="#c98500" stroke-width="2" stroke-dasharray="2 4" opacity="0.85"/>
-<text x="718" y="162.8" font-size="11" fill="#c98500" font-weight="700">62.63 GFLOP/s</text>
-<line x1="78" y1="70.7" x2="710" y2="70.7" stroke="#008300" stroke-width="2" stroke-dasharray="2 4" opacity="0.85"/>
-<text x="718" y="74.7" font-size="11" fill="#008300" font-weight="700">200.1 GFLOP/s</text>
-<circle cx="124.4" cy="526.2" r="6.5" fill="#2a78d6" stroke="#ffffff" stroke-width="1.5"/>
-<circle cx="124.4" cy="511.8" r="6.5" fill="#2a78d6" stroke="#ffffff" stroke-width="1.5"/>
-<circle cx="124.4" cy="496.3" r="6.5" fill="#2a78d6" stroke="#ffffff" stroke-width="1.5"/>
-<circle cx="124.4" cy="496.8" r="6.5" fill="#2a78d6" stroke="#ffffff" stroke-width="1.5"/>
-<circle cx="124.4" cy="484.3" r="6.5" fill="#2a78d6" stroke="#ffffff" stroke-width="1.5"/>
-<circle cx="124.4" cy="454.1" r="6.5" fill="#1baf7a" stroke="#ffffff" stroke-width="1.5"/>
-<circle cx="124.4" cy="423.5" r="6.5" fill="#1baf7a" stroke="#ffffff" stroke-width="1.5"/>
-<circle cx="124.4" cy="416.8" r="6.5" fill="#1baf7a" stroke="#ffffff" stroke-width="1.5"/>
-<circle cx="124.4" cy="424.4" r="6.5" fill="#1baf7a" stroke="#ffffff" stroke-width="1.5"/>
-<circle cx="124.4" cy="392.9" r="6.5" fill="#1baf7a" stroke="#ffffff" stroke-width="1.5"/>
-<circle cx="261.4" cy="439.4" r="6.5" fill="#c98500" stroke="#ffffff" stroke-width="1.5"/>
-<circle cx="212.5" cy="490.8" r="6.5" fill="#c98500" stroke="#ffffff" stroke-width="1.5"/>
-<circle cx="261.4" cy="342.6" r="6.5" fill="#008300" stroke="#ffffff" stroke-width="1.5"/>
-<circle cx="212.5" cy="420.4" r="6.5" fill="#008300" stroke="#ffffff" stroke-width="1.5"/>
-<rect x="78" y="616" width="12" height="12" rx="3" fill="#2a78d6"/>
-<text x="95" y="626" font-size="12" fill="#3d3d3a">FP64 · MinorCPU</text>
-<rect x="241" y="616" width="12" height="12" rx="3" fill="#1baf7a"/>
-<text x="258" y="626" font-size="12" fill="#3d3d3a">FP64 · O3CPU</text>
-<rect x="380" y="616" width="12" height="12" rx="3" fill="#c98500"/>
-<text x="397" y="626" font-size="12" fill="#3d3d3a">FP16 · MinorCPU</text>
-<rect x="543" y="616" width="12" height="12" rx="3" fill="#008300"/>
-<text x="560" y="626" font-size="12" fill="#3d3d3a">FP16 · O3CPU</text>
-<line x1="682" y1="621" x2="702" y2="621" stroke="#767671" stroke-width="2" stroke-dasharray="4 3"/>
-<text x="708" y="626" font-size="12" fill="#3d3d3a">Memory roof</text>
-<text x="78" y="648" font-size="10.5" fill="#767671">il=4 rows (scalar fallback, AI undefined) omitted from the plot — see table for those values.</text>
+<line x1="78" y1="244.9" x2="710" y2="244.9" stroke="#2a78d6" stroke-width="2" stroke-dasharray="2 4" opacity="0.85"/>
+<text x="718" y="248.9" font-size="11" fill="#2a78d6" font-weight="700">15.73 GFLOP/s</text>
+<line x1="78" y1="164.5" x2="710" y2="164.5" stroke="#1baf7a" stroke-width="2" stroke-dasharray="2 4" opacity="0.85"/>
+<text x="718" y="168.5" font-size="11" fill="#1baf7a" font-weight="700">49.97 GFLOP/s</text>
+<line x1="78" y1="148.9" x2="710" y2="148.9" stroke="#c98500" stroke-width="2" stroke-dasharray="2 4" opacity="0.85"/>
+<text x="718" y="152.9" font-size="11" fill="#c98500" font-weight="700">62.63 GFLOP/s</text>
+<line x1="78" y1="68.1" x2="710" y2="68.1" stroke="#008300" stroke-width="2" stroke-dasharray="2 4" opacity="0.85"/>
+<text x="718" y="72.1" font-size="11" fill="#008300" font-weight="700">200.1 GFLOP/s</text>
+<circle cx="124.4" cy="485.4" r="6.5" fill="#2a78d6" stroke="#ffffff" stroke-width="1.5" opacity="0.7"/>
+<circle cx="124.4" cy="472.0" r="6.5" fill="#2a78d6" stroke="#ffffff" stroke-width="1.5" opacity="0.7"/>
+<circle cx="124.4" cy="458.7" r="6.5" fill="#2a78d6" stroke="#ffffff" stroke-width="1.5" opacity="0.7"/>
+<circle cx="124.4" cy="458.2" r="6.5" fill="#2a78d6" stroke="#ffffff" stroke-width="1.5" opacity="0.7"/>
+<circle cx="124.4" cy="447.0" r="6.5" fill="#2a78d6" stroke="#ffffff" stroke-width="1.5" opacity="0.7"/>
+<circle cx="124.4" cy="418.6" r="6.5" fill="#1baf7a" stroke="#ffffff" stroke-width="1.5" opacity="0.7"/>
+<circle cx="124.4" cy="391.4" r="6.5" fill="#1baf7a" stroke="#ffffff" stroke-width="1.5" opacity="0.7"/>
+<circle cx="124.4" cy="386.4" r="6.5" fill="#1baf7a" stroke="#ffffff" stroke-width="1.5" opacity="0.7"/>
+<circle cx="124.4" cy="390.3" r="6.5" fill="#1baf7a" stroke="#ffffff" stroke-width="1.5" opacity="0.7"/>
+<circle cx="124.4" cy="363.7" r="6.5" fill="#1baf7a" stroke="#ffffff" stroke-width="1.5" opacity="0.7"/>
+<circle cx="261.4" cy="406.7" r="6.5" fill="#c98500" stroke="#ffffff" stroke-width="1.5" opacity="0.7"/>
+<circle cx="212.5" cy="453.3" r="6.5" fill="#c98500" stroke="#ffffff" stroke-width="1.5" opacity="0.7"/>
+<circle cx="261.4" cy="317.4" r="6.5" fill="#008300" stroke="#ffffff" stroke-width="1.5" opacity="0.7"/>
+<circle cx="212.5" cy="387.5" r="6.5" fill="#008300" stroke="#ffffff" stroke-width="1.5" opacity="0.7"/>
+<polygon points="225.3,403.4 232.8,410.9 225.3,418.4 217.8,410.9" fill="#2a78d6" stroke="#ffffff" stroke-width="1.5"/>
+<polygon points="225.3,321.2 232.8,328.7 225.3,336.2 217.8,328.7" fill="#1baf7a" stroke="#ffffff" stroke-width="1.5"/>
+<polygon points="362.3,341.6 369.8,349.1 362.3,356.6 354.8,349.1" fill="#c98500" stroke="#ffffff" stroke-width="1.5"/>
+<polygon points="362.3,240.5 369.8,248.0 362.3,255.5 354.8,248.0" fill="#008300" stroke="#ffffff" stroke-width="1.5"/>
+<rect x="78" y="575" width="12" height="12" rx="3" fill="#2a78d6"/>
+<text x="95" y="585" font-size="12" fill="#3d3d3a">FP64 · MinorCPU</text>
+<rect x="241" y="575" width="12" height="12" rx="3" fill="#1baf7a"/>
+<text x="258" y="585" font-size="12" fill="#3d3d3a">FP64 · O3CPU</text>
+<rect x="380" y="575" width="12" height="12" rx="3" fill="#c98500"/>
+<text x="397" y="585" font-size="12" fill="#3d3d3a">FP16 · MinorCPU</text>
+<rect x="543" y="575" width="12" height="12" rx="3" fill="#008300"/>
+<text x="560" y="585" font-size="12" fill="#3d3d3a">FP16 · O3CPU</text>
+<line x1="682" y1="580" x2="702" y2="580" stroke="#767671" stroke-width="2" stroke-dasharray="4 3"/>
+<text x="708" y="585" font-size="12" fill="#3d3d3a">Memory roof</text>
+<circle cx="84" cy="606" r="6.5" fill="#767671" stroke="#ffffff" stroke-width="1.5" opacity="0.7"/>
+<text x="98" y="610" font-size="12" fill="#3d3d3a">scalar_gemm (circle)</text>
+<polygon points="286.0,598.5 293.5,606.0 286.0,613.5 278.5,606.0" fill="#767671" stroke="#ffffff" stroke-width="1.5"/>
+<text x="302" y="610" font-size="12" fill="#3d3d3a">opt_gemm (diamond)</text>
+<text x="78" y="634" font-size="10.5" fill="#767671">il=4 rows (scalar fallback) omitted — see table for values. opt_gemm plots one (w,il); it ignores those flags.</text>
 </svg>
