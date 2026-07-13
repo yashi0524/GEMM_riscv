@@ -118,6 +118,20 @@ SECTIONS
         *(.data.*)
         *(.gnu.linkonce.d.*)
 
+        /* RISC-V small-data: without these, the linker orphans any
+         * *(.sdata*) input section (gcc's gp-relative optimization for
+         * small globals — this is where newlib puts _impure_ptr,
+         * __malloc_*, __lock_* etc.) into its own PROGBITS section
+         * placed right after .data but OUTSIDE [_data_start,_data_end),
+         * so start.S's copy loop below never initializes it: it silently
+         * reads back as zero at runtime instead of its real FLASH value,
+         * which nulls out _impure_ptr and breaks all buffered stdio
+         * (printf/puts silently produce no output, no crash) without
+         * ever touching .text/.rodata/ordinary .data. */
+        *(.sdata)
+        *(.sdata.*)
+        *(.gnu.linkonce.s.*)
+
         /* Global pointer anchor — must be here for linker relaxation. */
         . = ALIGN(8);
         PROVIDE(__global_pointer$ = . + 0x800);
@@ -138,6 +152,16 @@ SECTIONS
         *(.bss.*)
         *(.gnu.linkonce.b.*)
         *(COMMON)
+
+        /* RISC-V small-bss counterpart to .sdata above (see comment
+         * there) — errno, __lock_* mutexes, __stdio init flag, malloc
+         * bookkeeping all live here. Must be inside [_bss_start,_bss_end)
+         * so start.S's zeroing loop actually covers them. */
+        *(.sbss)
+        *(.sbss.*)
+        *(.gnu.linkonce.sb.*)
+        *(.scommon)
+
         . = ALIGN(8);
         _bss_end = .;
 
