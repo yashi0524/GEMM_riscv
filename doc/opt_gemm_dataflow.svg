@@ -1,0 +1,290 @@
+<svg viewBox="0 0 1720 900" xmlns="http://www.w3.org/2000/svg" font-family="ui-sans-serif,-apple-system,'Segoe UI',Helvetica,Arial,sans-serif">
+
+<style>
+  :root {
+    --ink: #14171c; --paper: #f1eee6; --graphite: #5b6472;
+    --amber: #c97a1f; --amber-fill: #f3ddb9; --amber-line: #c97a1f;
+    --teal: #2f7d74; --teal-fill: #cfe9e5; --teal-line: #2f7d74;
+    --rule: #d8d3c6; --panel: #ffffff; --muted: #7b8291;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --ink: #f1eee6; --paper: #14171c; --graphite: #a7afbd;
+      --amber: #e7a24a; --amber-fill: #4a3818; --amber-line: #e7a24a;
+      --teal: #6fc7bc; --teal-fill: #163530; --teal-line: #6fc7bc;
+      --rule: #333944; --panel: #1b1f26; --muted: #8890a0;
+    }
+  }
+  svg { background: var(--paper); }
+  text { fill: var(--ink); }
+  .mono { font-family: ui-monospace, "SF Mono", "Cascadia Code", "Roboto Mono", Menlo, Consolas, monospace; }
+  .title { font-size: 25px; font-weight: 600; }
+  .subtitle { font-size: 14px; fill: var(--muted); }
+  .loop-label { font-size: 12px; fill: var(--graphite); letter-spacing: 0.06em; }
+  .lane-badge { font-size: 12px; font-weight: 600; fill: var(--paper); }
+  .box-label { font-size: 13px; }
+  .stage-label { font-size: 11px; fill: var(--muted); letter-spacing: 0.08em; }
+  .caption { font-size: 12.5px; fill: var(--graphite); }
+  .node-init rect { fill: var(--panel); stroke: var(--graphite); stroke-width: 1.25; }
+  .node-a rect { fill: var(--panel); stroke: var(--rule); stroke-width: 1.25; }
+  .node-b rect { fill: var(--panel); stroke: var(--amber-line); stroke-width: 1.5; }
+  .node-fma rect { fill: var(--amber-fill); stroke: var(--amber-line); stroke-width: 1.5; }
+  .node-reduce rect { fill: var(--teal-fill); stroke: var(--teal-line); stroke-width: 1.5; }
+  .node-store rect { fill: var(--panel); stroke: var(--graphite); stroke-width: 1.5; }
+  .flow-line { stroke: var(--graphite); stroke-width: 1.25; fill: none; opacity: 0.55; }
+  .flow-line-hot { stroke: var(--amber-line); stroke-width: 1.4; fill: none; opacity: 0.75; }
+  .flow-line-reduce { stroke: var(--teal-line); stroke-width: 1.4; fill: none; opacity: 0.8; }
+  .loop-frame { fill: none; stroke: var(--graphite); stroke-width: 1.25; stroke-dasharray: 5 4; opacity: 0.6; }
+</style>
+
+<text x="48" y="42" class="title">opt_gemm — per-tile dataflow</text>
+<text x="48" y="64" class="subtitle">src/gemm.c · one iteration of row <tspan class="mono">i</tspan>, column tile <tspan class="mono">j : j+vl</tspan> · 8-way unrolled RVV FMA reduction over <tspan class="mono">l</tspan></text>
+<rect class="loop-frame" x="276" y="70.0" width="650" height="692.0" rx="10" />
+<text x="601.0" y="60.0" text-anchor="middle" class="loop-label mono">for (l = 0; l + 8 &#8804; k; l += 8)</text>
+<text x="601.0" y="782.0" text-anchor="middle" class="caption mono">tail: while (l &lt; k) vc0 += &#945;&#183;A[i,l] &#215; B[l, j:j+vl]</text>
+<text x="96" y="36.0" class="stage-label">ACCUMULATOR INIT</text>
+<text x="300" y="36.0" class="stage-label">SCALE A (SCALAR)</text>
+<text x="486" y="36.0" class="stage-label">LOAD B (VECTOR)</text>
+<text x="712" y="36.0" class="stage-label">FMA ACCUMULATE</text>
+<text x="986" y="42" class="stage-label">REDUCTION TREE</text>
+<text x="1512" y="42" class="stage-label">STORE</text>
+<circle cx="52" cy="130" r="15" fill="var(--graphite)" opacity="0.85" />
+<text x="52" y="134" text-anchor="middle" class="lane-badge mono">L0</text>
+<g class="node-init">
+<rect x="96" y="104.0" width="172" height="52" rx="3" />
+</g>
+<text x="182.0" y="126" text-anchor="middle" class="box-label mono">C[i, j:j+vl]</text>
+<text x="182.0" y="142" text-anchor="middle" class="box-label mono">&#215; &#946;  &#8594; vc0</text>
+<g class="node-a">
+<rect x="300" y="104.0" width="150" height="52" rx="3" />
+</g>
+<text x="375.0" y="134" text-anchor="middle" class="box-label mono">a0 = &#945;&#183;A[i,l+0]</text>
+<path class="flow-line" d="M268,130 C284.0,130 284.0,130 300,130" />
+<g class="node-b">
+<rect x="486" y="104.0" width="190" height="52" rx="3" />
+</g>
+<text x="581.0" y="134" text-anchor="middle" class="box-label mono">b0 = B[l+0, j:j+vl]</text>
+<path class="flow-line" d="M450,130 C468.0,130 468.0,130 486,130" />
+<g class="node-fma">
+<rect x="712" y="104.0" width="190" height="52" rx="3" />
+</g>
+<text x="807.0" y="134" text-anchor="middle" class="box-label mono">vfmacc(vc0, a0, b0)</text>
+<path class="flow-line-hot" d="M676,130 C694.0,130 694.0,130 712,130" />
+<path class="flow-line-hot" marker-end="url(#arrow)" d="M783.0,104.0 C767.0,88.0 847.0,88.0 831.0,104.0" />
+<circle cx="52" cy="210" r="15" fill="var(--graphite)" opacity="0.85" />
+<text x="52" y="214" text-anchor="middle" class="lane-badge mono">L1</text>
+<g class="node-init">
+<rect x="96" y="184.0" width="172" height="52" rx="3" />
+</g>
+<text x="182.0" y="214" text-anchor="middle" class="box-label mono">0 &#8594; vc1</text>
+<g class="node-a">
+<rect x="300" y="184.0" width="150" height="52" rx="3" />
+</g>
+<text x="375.0" y="214" text-anchor="middle" class="box-label mono">a1 = &#945;&#183;A[i,l+1]</text>
+<path class="flow-line" d="M268,210 C284.0,210 284.0,210 300,210" />
+<g class="node-b">
+<rect x="486" y="184.0" width="190" height="52" rx="3" />
+</g>
+<text x="581.0" y="214" text-anchor="middle" class="box-label mono">b1 = B[l+1, j:j+vl]</text>
+<path class="flow-line" d="M450,210 C468.0,210 468.0,210 486,210" />
+<g class="node-fma">
+<rect x="712" y="184.0" width="190" height="52" rx="3" />
+</g>
+<text x="807.0" y="214" text-anchor="middle" class="box-label mono">vfmacc(vc1, a1, b1)</text>
+<path class="flow-line-hot" d="M676,210 C694.0,210 694.0,210 712,210" />
+<path class="flow-line-hot" marker-end="url(#arrow)" d="M783.0,184.0 C767.0,168.0 847.0,168.0 831.0,184.0" />
+<circle cx="52" cy="290" r="15" fill="var(--graphite)" opacity="0.85" />
+<text x="52" y="294" text-anchor="middle" class="lane-badge mono">L2</text>
+<g class="node-init">
+<rect x="96" y="264.0" width="172" height="52" rx="3" />
+</g>
+<text x="182.0" y="294" text-anchor="middle" class="box-label mono">0 &#8594; vc2</text>
+<g class="node-a">
+<rect x="300" y="264.0" width="150" height="52" rx="3" />
+</g>
+<text x="375.0" y="294" text-anchor="middle" class="box-label mono">a2 = &#945;&#183;A[i,l+2]</text>
+<path class="flow-line" d="M268,290 C284.0,290 284.0,290 300,290" />
+<g class="node-b">
+<rect x="486" y="264.0" width="190" height="52" rx="3" />
+</g>
+<text x="581.0" y="294" text-anchor="middle" class="box-label mono">b2 = B[l+2, j:j+vl]</text>
+<path class="flow-line" d="M450,290 C468.0,290 468.0,290 486,290" />
+<g class="node-fma">
+<rect x="712" y="264.0" width="190" height="52" rx="3" />
+</g>
+<text x="807.0" y="294" text-anchor="middle" class="box-label mono">vfmacc(vc2, a2, b2)</text>
+<path class="flow-line-hot" d="M676,290 C694.0,290 694.0,290 712,290" />
+<path class="flow-line-hot" marker-end="url(#arrow)" d="M783.0,264.0 C767.0,248.0 847.0,248.0 831.0,264.0" />
+<circle cx="52" cy="370" r="15" fill="var(--graphite)" opacity="0.85" />
+<text x="52" y="374" text-anchor="middle" class="lane-badge mono">L3</text>
+<g class="node-init">
+<rect x="96" y="344.0" width="172" height="52" rx="3" />
+</g>
+<text x="182.0" y="374" text-anchor="middle" class="box-label mono">0 &#8594; vc3</text>
+<g class="node-a">
+<rect x="300" y="344.0" width="150" height="52" rx="3" />
+</g>
+<text x="375.0" y="374" text-anchor="middle" class="box-label mono">a3 = &#945;&#183;A[i,l+3]</text>
+<path class="flow-line" d="M268,370 C284.0,370 284.0,370 300,370" />
+<g class="node-b">
+<rect x="486" y="344.0" width="190" height="52" rx="3" />
+</g>
+<text x="581.0" y="374" text-anchor="middle" class="box-label mono">b3 = B[l+3, j:j+vl]</text>
+<path class="flow-line" d="M450,370 C468.0,370 468.0,370 486,370" />
+<g class="node-fma">
+<rect x="712" y="344.0" width="190" height="52" rx="3" />
+</g>
+<text x="807.0" y="374" text-anchor="middle" class="box-label mono">vfmacc(vc3, a3, b3)</text>
+<path class="flow-line-hot" d="M676,370 C694.0,370 694.0,370 712,370" />
+<path class="flow-line-hot" marker-end="url(#arrow)" d="M783.0,344.0 C767.0,328.0 847.0,328.0 831.0,344.0" />
+<circle cx="52" cy="450" r="15" fill="var(--graphite)" opacity="0.85" />
+<text x="52" y="454" text-anchor="middle" class="lane-badge mono">L4</text>
+<g class="node-init">
+<rect x="96" y="424.0" width="172" height="52" rx="3" />
+</g>
+<text x="182.0" y="454" text-anchor="middle" class="box-label mono">0 &#8594; vc4</text>
+<g class="node-a">
+<rect x="300" y="424.0" width="150" height="52" rx="3" />
+</g>
+<text x="375.0" y="454" text-anchor="middle" class="box-label mono">a4 = &#945;&#183;A[i,l+4]</text>
+<path class="flow-line" d="M268,450 C284.0,450 284.0,450 300,450" />
+<g class="node-b">
+<rect x="486" y="424.0" width="190" height="52" rx="3" />
+</g>
+<text x="581.0" y="454" text-anchor="middle" class="box-label mono">b4 = B[l+4, j:j+vl]</text>
+<path class="flow-line" d="M450,450 C468.0,450 468.0,450 486,450" />
+<g class="node-fma">
+<rect x="712" y="424.0" width="190" height="52" rx="3" />
+</g>
+<text x="807.0" y="454" text-anchor="middle" class="box-label mono">vfmacc(vc4, a4, b4)</text>
+<path class="flow-line-hot" d="M676,450 C694.0,450 694.0,450 712,450" />
+<path class="flow-line-hot" marker-end="url(#arrow)" d="M783.0,424.0 C767.0,408.0 847.0,408.0 831.0,424.0" />
+<circle cx="52" cy="530" r="15" fill="var(--graphite)" opacity="0.85" />
+<text x="52" y="534" text-anchor="middle" class="lane-badge mono">L5</text>
+<g class="node-init">
+<rect x="96" y="504.0" width="172" height="52" rx="3" />
+</g>
+<text x="182.0" y="534" text-anchor="middle" class="box-label mono">0 &#8594; vc5</text>
+<g class="node-a">
+<rect x="300" y="504.0" width="150" height="52" rx="3" />
+</g>
+<text x="375.0" y="534" text-anchor="middle" class="box-label mono">a5 = &#945;&#183;A[i,l+5]</text>
+<path class="flow-line" d="M268,530 C284.0,530 284.0,530 300,530" />
+<g class="node-b">
+<rect x="486" y="504.0" width="190" height="52" rx="3" />
+</g>
+<text x="581.0" y="534" text-anchor="middle" class="box-label mono">b5 = B[l+5, j:j+vl]</text>
+<path class="flow-line" d="M450,530 C468.0,530 468.0,530 486,530" />
+<g class="node-fma">
+<rect x="712" y="504.0" width="190" height="52" rx="3" />
+</g>
+<text x="807.0" y="534" text-anchor="middle" class="box-label mono">vfmacc(vc5, a5, b5)</text>
+<path class="flow-line-hot" d="M676,530 C694.0,530 694.0,530 712,530" />
+<path class="flow-line-hot" marker-end="url(#arrow)" d="M783.0,504.0 C767.0,488.0 847.0,488.0 831.0,504.0" />
+<circle cx="52" cy="610" r="15" fill="var(--graphite)" opacity="0.85" />
+<text x="52" y="614" text-anchor="middle" class="lane-badge mono">L6</text>
+<g class="node-init">
+<rect x="96" y="584.0" width="172" height="52" rx="3" />
+</g>
+<text x="182.0" y="614" text-anchor="middle" class="box-label mono">0 &#8594; vc6</text>
+<g class="node-a">
+<rect x="300" y="584.0" width="150" height="52" rx="3" />
+</g>
+<text x="375.0" y="614" text-anchor="middle" class="box-label mono">a6 = &#945;&#183;A[i,l+6]</text>
+<path class="flow-line" d="M268,610 C284.0,610 284.0,610 300,610" />
+<g class="node-b">
+<rect x="486" y="584.0" width="190" height="52" rx="3" />
+</g>
+<text x="581.0" y="614" text-anchor="middle" class="box-label mono">b6 = B[l+6, j:j+vl]</text>
+<path class="flow-line" d="M450,610 C468.0,610 468.0,610 486,610" />
+<g class="node-fma">
+<rect x="712" y="584.0" width="190" height="52" rx="3" />
+</g>
+<text x="807.0" y="614" text-anchor="middle" class="box-label mono">vfmacc(vc6, a6, b6)</text>
+<path class="flow-line-hot" d="M676,610 C694.0,610 694.0,610 712,610" />
+<path class="flow-line-hot" marker-end="url(#arrow)" d="M783.0,584.0 C767.0,568.0 847.0,568.0 831.0,584.0" />
+<circle cx="52" cy="690" r="15" fill="var(--graphite)" opacity="0.85" />
+<text x="52" y="694" text-anchor="middle" class="lane-badge mono">L7</text>
+<g class="node-init">
+<rect x="96" y="664.0" width="172" height="52" rx="3" />
+</g>
+<text x="182.0" y="694" text-anchor="middle" class="box-label mono">0 &#8594; vc7</text>
+<g class="node-a">
+<rect x="300" y="664.0" width="150" height="52" rx="3" />
+</g>
+<text x="375.0" y="694" text-anchor="middle" class="box-label mono">a7 = &#945;&#183;A[i,l+7]</text>
+<path class="flow-line" d="M268,690 C284.0,690 284.0,690 300,690" />
+<g class="node-b">
+<rect x="486" y="664.0" width="190" height="52" rx="3" />
+</g>
+<text x="581.0" y="694" text-anchor="middle" class="box-label mono">b7 = B[l+7, j:j+vl]</text>
+<path class="flow-line" d="M450,690 C468.0,690 468.0,690 486,690" />
+<g class="node-fma">
+<rect x="712" y="664.0" width="190" height="52" rx="3" />
+</g>
+<text x="807.0" y="694" text-anchor="middle" class="box-label mono">vfmacc(vc7, a7, b7)</text>
+<path class="flow-line-hot" d="M676,690 C694.0,690 694.0,690 712,690" />
+<path class="flow-line-hot" marker-end="url(#arrow)" d="M783.0,664.0 C767.0,648.0 847.0,648.0 831.0,664.0" />
+<defs><marker id="arrow" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto"><path d="M0,0 L6,3 L0,6 z" fill="var(--amber-line)" /></marker></defs>
+<g class="node-reduce">
+<rect x="986" y="147.0" width="116" height="46" rx="3" />
+</g>
+<text x="1044.0" y="166.0" text-anchor="middle" class="box-label mono">vc01 =</text>
+<text x="1044.0" y="182.0" text-anchor="middle" class="box-label mono">vc0+vc1</text>
+<path class="flow-line-reduce" d="M902,130 C944.0,130 944.0,170.0 986,170.0" />
+<path class="flow-line-reduce" d="M902,210 C944.0,210 944.0,170.0 986,170.0" />
+<g class="node-reduce">
+<rect x="986" y="307.0" width="116" height="46" rx="3" />
+</g>
+<text x="1044.0" y="326.0" text-anchor="middle" class="box-label mono">vc23 =</text>
+<text x="1044.0" y="342.0" text-anchor="middle" class="box-label mono">vc2+vc3</text>
+<path class="flow-line-reduce" d="M902,290 C944.0,290 944.0,330.0 986,330.0" />
+<path class="flow-line-reduce" d="M902,370 C944.0,370 944.0,330.0 986,330.0" />
+<g class="node-reduce">
+<rect x="986" y="467.0" width="116" height="46" rx="3" />
+</g>
+<text x="1044.0" y="486.0" text-anchor="middle" class="box-label mono">vc45 =</text>
+<text x="1044.0" y="502.0" text-anchor="middle" class="box-label mono">vc4+vc5</text>
+<path class="flow-line-reduce" d="M902,450 C944.0,450 944.0,490.0 986,490.0" />
+<path class="flow-line-reduce" d="M902,530 C944.0,530 944.0,490.0 986,490.0" />
+<g class="node-reduce">
+<rect x="986" y="627.0" width="116" height="46" rx="3" />
+</g>
+<text x="1044.0" y="646.0" text-anchor="middle" class="box-label mono">vc67 =</text>
+<text x="1044.0" y="662.0" text-anchor="middle" class="box-label mono">vc6+vc7</text>
+<path class="flow-line-reduce" d="M902,610 C944.0,610 944.0,650.0 986,650.0" />
+<path class="flow-line-reduce" d="M902,690 C944.0,690 944.0,650.0 986,650.0" />
+<g class="node-reduce">
+<rect x="1156" y="227.0" width="116" height="46" rx="3" />
+</g>
+<text x="1214.0" y="246.0" text-anchor="middle" class="box-label mono">vc0123 =</text>
+<text x="1214.0" y="262.0" text-anchor="middle" class="box-label mono">vc01+vc23</text>
+<path class="flow-line-reduce" d="M1102,170.0 C1129.0,170.0 1129.0,250.0 1156,250.0" />
+<path class="flow-line-reduce" d="M1102,330.0 C1129.0,330.0 1129.0,250.0 1156,250.0" />
+<g class="node-reduce">
+<rect x="1156" y="547.0" width="116" height="46" rx="3" />
+</g>
+<text x="1214.0" y="566.0" text-anchor="middle" class="box-label mono">vc4567 =</text>
+<text x="1214.0" y="582.0" text-anchor="middle" class="box-label mono">vc45+vc67</text>
+<path class="flow-line-reduce" d="M1102,490.0 C1129.0,490.0 1129.0,570.0 1156,570.0" />
+<path class="flow-line-reduce" d="M1102,650.0 C1129.0,650.0 1129.0,570.0 1156,570.0" />
+<g class="node-reduce">
+<rect x="1326" y="385.0" width="116" height="50" rx="3" />
+</g>
+<text x="1384.0" y="406.0" text-anchor="middle" class="box-label mono">vc =</text>
+<text x="1384.0" y="422.0" text-anchor="middle" class="box-label mono">vc0123+vc4567</text>
+<path class="flow-line-reduce" d="M1272,250.0 C1299.0,250.0 1299.0,410.0 1326,410.0" />
+<path class="flow-line-reduce" d="M1272,570.0 C1299.0,570.0 1299.0,410.0 1326,410.0" />
+<g class="node-store">
+<rect x="1512" y="383.0" width="168" height="54" rx="3" />
+</g>
+<text x="1596.0" y="406.0" text-anchor="middle" class="box-label mono">vse &#8594;</text>
+<text x="1596.0" y="422.0" text-anchor="middle" class="box-label mono">C[i, j:j+vl]</text>
+<path class="flow-line" d="M1442,410.0 C1477.0,410.0 1477.0,410.0 1512,410.0" />
+<circle cx="53" cy="856" r="4" fill="var(--amber)" />
+<text x="64" y="860" class="caption">vector load / FMA compute</text>
+<circle cx="270" cy="856" r="4" fill="var(--teal)" />
+<text x="281" y="860" class="caption">reduction-tree merge</text>
+<text x="48" y="882" class="caption">8 independent vc0..vc7 chains break the vc&#8594;vc serial FMA dependency, so MinorCPU&#8217;s dual-issue pipeline overlaps FMA latency across lanes instead of stalling on one chain.</text>
+<text x="1672" y="882" text-anchor="end" class="caption mono">j += vl &#8594; next tile &#160;&#183;&#160; i += 1 &#8594; next row</text>
+</svg>
