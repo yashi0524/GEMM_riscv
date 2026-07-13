@@ -1,2 +1,7 @@
 __pycache__/
 *.pyc
+
+# Build outputs (Makefile's $(OUT_DIR)/%_riscv pattern rule + `dis` target)
+test/*_riscv
+test/*_riscv_flags
+test/*_riscv.dis
