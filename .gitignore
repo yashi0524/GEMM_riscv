@@ -5,3 +5,6 @@ __pycache__/
 test/*_riscv
 test/*_riscv_flags
 test/*_riscv.dis
+
+# gem5 O3PipeView traces (tens of MB each)
+*.trace
