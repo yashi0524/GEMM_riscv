@@ -1,4 +1,4 @@
-# Makefile — dgemm_riscv bare-metal for gem5 RISC-V M-mode
+# Makefile — gemm_riscv bare-metal for gem5 RISC-V M-mode
 # Output via NS16550A UART at 0x10000000, viewed with m5term
 
 # --- Compiler and Tools ---
@@ -74,9 +74,9 @@ $(OUT_DIR)/%_riscv: $(SRC_DIR)/%.c $(STARTUP) $(LDSCRIPT)
 M            := 4
 ITERS        := 10000
 TARGET_FLOAT := double
+WARMUP       := 0
 
-$(OUT_DIR)/dgemm_riscv: BENCH_EXTRA_FLAGS = -DM=$(M) -mllvm -force-vector-width=8
-$(OUT_DIR)/gemm_riscv:  BENCH_EXTRA_FLAGS = -DM=$(M) -Dtarget_float=$(TARGET_FLOAT) -mllvm -force-vector-width=8
+$(OUT_DIR)/gemm_riscv:  BENCH_EXTRA_FLAGS = -DM=$(M) -Dtarget_float=$(TARGET_FLOAT) -DWARMUP_RUNS=$(WARMUP) -mllvm -force-vector-width=8
 $(OUT_DIR)/fmacc_riscv: BENCH_EXTRA_FLAGS = -DITERS=$(ITERS)
 # fmacc_fp16 needs the zvfh extension for vector half-precision FMA; a second
 # -march= wins over the base one (clang takes the last -march on the line).
@@ -85,8 +85,7 @@ $(OUT_DIR)/fmacc_fp16_riscv: BENCH_EXTRA_FLAGS = -march=rv64gcv_zvfh -DITERS=$(I
 # =============================================================
 # Convenience aliases
 # =============================================================
-all:        $(OUT_DIR)/dgemm_riscv
-dgemm:      $(OUT_DIR)/dgemm_riscv
+all:        $(OUT_DIR)/gemm_riscv
 gemm:       $(OUT_DIR)/gemm_riscv
 fmacc:      $(OUT_DIR)/fmacc_riscv
 fmacc_fp16: $(OUT_DIR)/fmacc_fp16_riscv
@@ -96,7 +95,7 @@ fmacc_fp16: $(OUT_DIR)/fmacc_fp16_riscv
 # =============================================================
 
 # Disassemble + verify _write/_exit; override with: make dis BIN=test/fmacc_riscv
-BIN ?= $(OUT_DIR)/dgemm_riscv
+BIN ?= $(OUT_DIR)/gemm_riscv
 dis: $(BIN)
 	riscv64-unknown-elf-objdump -d -M no-aliases $(BIN) > $(BIN).dis
 	@echo "=== _write (should show UART polling loop, no ecall) ==="
@@ -111,4 +110,4 @@ dump_flags:
 clean:
 	rm -f $(OUT_DIR)/*_riscv $(OUT_DIR)/*_riscv_flags $(OUT_DIR)/*_riscv.dis
 
-.PHONY: all dgemm fmacc fmacc_fp16 dis dump_flags clean
+.PHONY: all gemm fmacc fmacc_fp16 dis dump_flags clean

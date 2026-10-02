@@ -10,6 +10,10 @@ GEMM kernels, from gem5's `O3PipeView` trace. Companion to
 - Run: `gem5.opt --debug-flags=O3PipeView --debug-file=pipeview.trace -d test/m5out_pipeview sim_config/gem5_riscv_demo_riscv_baremetal_semihost_o3.py test/gemm_riscv`
   (2026-10-01, gem5 25.1.0.0, log in `test/pipeview_run.log`)
 - Kernel: FP64, `M=N=K=16`, VLEN=512 (`vl=8`), each kernel called **once**
+  (cold) unless noted — see [Warm-cache measurement](#warm-cache-measurement)
+- Source: the original `src/gemm.c` (commit `1921399`). Later sections change
+  the source (`vsetvlmax`, `WARMUP_RUNS`) and the simulated machine
+  (I-cache prefetcher); each section states what it ran.
 - Trace: `test/m5out_pipeview/pipeview.trace` (24 MB, 106,420 micro-op records)
 - Kernel PC ranges (from `llvm-nm-18 -S gemm_riscv`):
   `opt_gemm` 0x10474–0x1073e, `opt_gemm_blocked` 0x1073e–0x10b54
@@ -122,10 +126,14 @@ blocked ≈ 864 cycles → blocked would be **~1.57× faster** than opt, versus 
 measured 1.10× (1,790 vs 1,625 mcycle). This is the "small-problem fixed cost"
 noted in [gemm_analysis.md](gemm_analysis.md)'s key finding, and it explains
 why blocking gains so little on O3 there (9.42% → 9.66% of compute roof).
-A warm-cache measurement (call each kernel twice, measure the second call)
-would confirm it.
+The [warm-cache measurement](#warm-cache-measurement) confirms it: 1.64×.
 
 ### 2. Squashes, about half right after `vsetvli`
+
+> **Correction (warm data):** most of these squashes come from a cold branch
+> predictor, not from `vsetvli` itself. With warm predictor/caches there are
+> only 4–6 squash events per call, 1–2 of them after a `vsetvli` — see
+> [Warm-cache measurement](#warm-cache-measurement).
 
 Last committed instruction before each squashed run:
 
@@ -213,19 +221,151 @@ the cause:
   still tops the dispatch→issue wait list. The expected `v24` fan-out stall
   doesn't appear: all 16 FMAs read `v24`, but they don't depend on each other.
 
-## Recommendations
+## `vsetvli` out of the inner loops (`vsetvlmax`)
 
-1. **Hoist `alpha` out of the inner loop** — accumulate `A·B` unscaled and
-   apply `C = alpha·acc + beta·C` once per output row. Removes 8 (opt) /
-   16 (blocked) `fmul.d` per inner iteration and the 4-cycle FP multiply from
-   the critical path. At opLat=6, opt's commit blocker becomes the `vfmacc`
-   itself, so this mainly helps by cutting instruction count (frontend
-   pressure) and helps blocked more than opt.
-2. **Hoist `vsetvli` out of the blocked inner loop** (`vl` is invariant) —
-   should remove most of the `vsetvli`-adjacent squashes.
-3. **Measure warm** — call each kernel twice and record the second call's
-   mcycle, to separate steady-state throughput from cold I-cache cost.
-4. ~~Re-capture with `O3_SIMD_FMA_OPLAT=6`~~ — done (see above): zero
-   cycle impact; FMA latency is not the bottleneck on O3 for this problem
-   size. Use opLat=6 for future O3 captures anyway, so that the code changes
-   above are measured against realistic FMA latency.
+The source already calls `vsetvl` once per column tile, outside the `l` loop.
+The in-loop `vsetvli` instructions are **compiler-inserted** (LLVM's vsetvli
+insertion doesn't recognize the vl as unchanged across the back-edge):
+
+| kernel | PC (original build) | executions | role |
+|---|---|---:|---|
+| opt | `0x105c4` `vsetvli s7, a4` | 32 | source `vsetvl(n - j)`, once per tile — keep |
+| opt | `0x1064a` `vsetvli zero, s7` | 64 | compiler-inserted inside the unrolled `l` loop — redundant |
+| blocked | `0x108de` `vsetvli a0, a0` | 2 | source `vsetvl(n - j)` — keep |
+| blocked | `0x10a2c` `vsetvli zero, a0` | 32 | compiler-inserted at the inner-loop back-edge target — redundant |
+| blocked | `0x10874` `vsetvli zero, a0` | 2 | compiler-inserted on loop exit — redundant, minor |
+
+Change (`src/gemm.c:129/185/291/362`, all four FP16/FP64 × opt/blocked sites):
+
+```c
+size_t vl = (size_t)(n - j) >= __riscv_vsetvlmax_e64m1() ? __riscv_vsetvlmax_e64m1()
+                                                         : __riscv_vsetvl_e64m1(n - j);
+```
+
+Full tiles use `vsetvlmax` (a known constant); only a partial last tile uses
+`vsetvl(n - j)`. Verified with `llvm-objdump-18`: no `vsetvli` left inside
+either inner loop. All results below: O3, `O3_SIMD_FMA_OPLAT=6`, correctness
+PASS.
+
+### Cold, compressed (default build): net loss from code alignment
+
+| | opt before | opt after | blocked before | blocked after |
+|---|---:|---:|---:|---:|
+| mcycle | 1,790 | 1,865 (+4%) | 1,625 | 1,784 (+10%) |
+| squash events / squashed micro-ops | 22 / 490 | 23 / 480 | 18 / 499 | 13 / 384 |
+| "other" fetch-gap cycles | 341 | 545 | 260 | 546 |
+
+The extra compare shifted the code by 2 bytes, leaving 4-byte instructions
+across 64 B line boundaries inside the hot loops (blocked: 0 → 5, at
+`0x10a3e`, `0x10a7e`, `0x10abe`, `0x10afe`, `0x10b3e`; opt: 2 → 3). O3 fetches
+from a one-line buffer (`fetchBufferSize=64`), so each straddling
+instruction costs an extra fetch (~1–2 cycles) every iteration.
+
+### Cold, no compressed instructions (`MARCH=rv64imafdv_zicsr_zifencei`)
+
+All instructions are 4 B and 4 B-aligned, so none can straddle a line:
+
+| | opt before | opt after | blocked before | blocked after |
+|---|---:|---:|---:|---:|
+| mcycle | 2,015 | **1,909 (−5.3%)** | 1,813 | 1,810 (≈0) |
+| squash events / squashed micro-ops | 21 / 576 | 24 / 575 | 20 / 640 | 13 / 387 |
+| cold I-line fetch-gap cycles | 615 (12 lines) | 608 (12 lines) | 991 (21 lines) | 1,081 (22 lines) |
+
+Blocked's ~90-cycle squash saving is cancelled by one extra cold I-line.
+Disabling compression itself costs ~10% (more code → more cold lines), so
+it is only for like-for-like comparison, not a default.
+
+## Warm-cache measurement
+
+`make gemm M=16 WARMUP=1` builds with `-DWARMUP_RUNS=1`: each kernel is
+called once untimed before its measured call (default `WARMUP=0` = cold, as
+before). `script/analyze_o3_pipeview.py --last-call` restricts the analysis
+to the measured call. O3, `O3_SIMD_FMA_OPLAT=6`, all PASS.
+
+| build | opt mcycle | blocked mcycle | blocked vs opt |
+|---|---:|---:|---:|
+| original, compressed | 1,215 | 739 | 1.64× |
+| vlmax, compressed | 1,306 (+7%) | 879 (+19%) | 1.49× |
+| original, no compressed | 1,291 | 705 | 1.83× |
+| vlmax, no compressed | **1,168 (−10%)** | **694 (−2%)** | 1.68× |
+
+| | opt orig, no-C | opt vlmax, no-C | blocked orig, no-C | blocked vlmax, no-C |
+|---|---:|---:|---:|---:|
+| IPC | 3.75 | 4.20 | 4.20 | 4.23 |
+| squash events / squashed micro-ops | 5 / 151 | 4 / 134 | 5 / 161 | 6 / 178 |
+| cold I-line fetch-gap cycles | 32 | 39 | 21 | 22 |
+| head complete, awaiting commit | 185 | 102 | — | — |
+
+- Cold I-line cost drops from 21–62% of span to 2–4%; blocked's true
+  advantage over opt is 1.64–1.83× (cold: 1.10×).
+- Squashes fall from 18–24 to 4–6 per call: the cold-run squashes were mostly
+  a cold branch predictor (see correction in root cause 2).
+- `vsetvlmax` helps opt by 10% warm: its in-loop `vsetvli` sat mid-body
+  after the `fmul.d` group; removing it cuts awaiting-commit cycles
+  185 → 102. In blocked it was 1 cheap instruction of 69 (−2%).
+- With compression, the line-straddle penalty is a steady-state cost:
+  blocked "other" fetch gaps 166 → 291, +19%.
+
+## I-cache prefetcher (simulated-machine change)
+
+The stock system has no L2 and no prefetcher: an I-cache miss costs ~55
+cycles (DRAM access ≈24 of them, the rest L1 + crossbar), paid serially
+while fetch walks straight-line unrolled code. An L2 would not help here —
+the kernel code is first-touch, so L2 would be cold too.
+
+`O3_ICACHE_PF_DEGREE=N` (default 0 = none) attaches a
+`TaggedPrefetcher(degree=N)` to the I-cache in
+`sim_config/gem5_riscv_demo_riscv_baremetal_semihost_o3.py`. Original
+source, compressed, `O3_SIMD_FMA_OPLAT=6`, all PASS:
+
+| degree | scalar | opt | blocked | I-misses | avg miss (cyc) | pf issued / useful / late |
+|---|---:|---:|---:|---:|---:|---|
+| 0 | 2,896 | 1,790 | 1,625 | 320 | 55.3 | – |
+| 1 | 2,762 | 1,523 (−15%) | 1,253 (−23%) | 220 | 48.1 | 262 / 76 / 53 |
+| 2 | 2,700 | 1,494 (−17%) | 1,194 (−27%) | 200 | 49.2 | 406 / 89 / 175 |
+| 4 | 2,660 | 1,456 (−19%) | 1,104 (−32%) | 185 | 51.4 | 551 / 112 / 295 |
+| 8 | 2,619 | **1,374 (−23%)** | **1,045 (−36%)** | 155 | 57.6 | 804 / 130 / 535 |
+| warm, d=0 and d=4 | 2,514 | 1,215 | 739 | | | |
+
+- Blocked (long straight-line code) benefits most; cold blocked-vs-opt goes
+  1.10× → 1.31×. Warm results are identical with and without the
+  prefetcher, so it costs nothing in steady state.
+- Diminishing returns: most prefetches are late (535/804 at degree 8) —
+  the I-cache has only 4 MSHRs, and a tagged prefetcher only triggers on a
+  miss or a prefetched-line hit, so each function's first line still
+  misses in full. ~300 cycles of cold cost remain for blocked (1,045 vs 739).
+- This changes the modelled machine; numbers with the prefetcher are not
+  comparable to earlier results (or MinorCPU) unless those are re-run on the
+  same config.
+
+## Status and TODO
+
+Done:
+
+- [x] Re-capture with `O3_SIMD_FMA_OPLAT=6` — zero cycle impact; use opLat=6
+  for all future O3 captures.
+- [x] Warm-cache measurement (`WARMUP=1`, `--last-call`).
+- [x] Remove compiler-inserted in-loop `vsetvli` via `vsetvlmax` — **now in
+  `src/gemm.c`**. Net win warm without compression (opt −10%, blocked −2%),
+  but a **net loss in the default compressed build** (cold +4% / +10%, warm
+  +7% / +19%) until the loop-alignment item below is done.
+- [x] I-cache `TaggedPrefetcher` knob (`O3_ICACHE_PF_DEGREE`) and degree sweep.
+
+TODO:
+
+- [ ] **Fix hot-loop line straddling in the compressed build** — try
+  `-mllvm -align-loops=64` (or check loop placement with `llvm-objdump-18`
+  after each build) and re-measure `vsetvlmax` cold and warm. Decide whether
+  to keep `vsetvlmax` in the default build based on that.
+- [ ] **Hoist `alpha` out of the inner loop** — accumulate `A·B` unscaled and
+  apply `C = alpha·acc + beta·C` once per output row. Removes 8 (opt) /
+  16 (blocked) `fmul.d` per inner iteration. At opLat=6 opt's commit blocker
+  is the `vfmacc` itself, so this mainly cuts instruction count / frontend
+  pressure; expect more benefit for blocked.
+- [ ] **I-cache MSHRs** — re-run the prefetcher sweep with I-cache `mshrs`
+  4 → 16 (degree 8) to see if the late prefetches become useful.
+- [ ] **Confirm the `vsetvli` squash mechanism** in gem5's RISC-V O3 source
+  (1–2 squashes per call remain after a `vsetvli` even when warm).
+- [ ] **Re-run the roofline sweep** ([gemm_analysis.md](gemm_analysis.md))
+  warm and/or with the prefetcher, so the O3 roof-% numbers reflect
+  steady-state performance rather than first-touch cost.

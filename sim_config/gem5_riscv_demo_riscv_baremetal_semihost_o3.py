@@ -14,6 +14,15 @@ from m5.objects import *
 #   O3_SIMD_FMA_OPLAT=5 gem5.opt ... this_config.py <binary>
 SIMD_FMA_OPLAT = int(os.environ.get("O3_SIMD_FMA_OPLAT", "1"))
 
+# --- I-cache next-line prefetcher (diagnostic knob) ---
+# The stock system has no L2 and no prefetcher, so every first-touch I-line
+# miss pays the full ~55-cycle L1->membus->DDR3 round trip, serially, as
+# fetch walks straight-line unrolled kernel code. A TaggedPrefetcher
+# (next-N-lines, re-triggered on hits to prefetched lines) hides that.
+#   O3_ICACHE_PF_DEGREE=2 gem5.opt ... this_config.py <binary>
+# Default 0 = no prefetcher (unchanged stock behavior).
+ICACHE_PF_DEGREE = int(os.environ.get("O3_ICACHE_PF_DEGREE", "0"))
+
 class CustomSIMDUnit(SIMD_Unit):
     opList = [
         OpDesc(opClass="SimdAdd"),
@@ -116,6 +125,8 @@ system.cpu.icache = Cache(
     mshrs=4,
     tgts_per_mshr=20,
 )
+if ICACHE_PF_DEGREE > 0:
+    system.cpu.icache.prefetcher = TaggedPrefetcher(degree=ICACHE_PF_DEGREE)
 system.cpu.dcache = Cache(
     size="64kB",
     assoc=4,

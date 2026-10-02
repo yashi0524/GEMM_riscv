@@ -126,7 +126,7 @@ void opt_gemm(int m, int n, int k,
     for (int i = 0; i < m; ++i) {
         for (int j = 0; j < n; ) {
 #if defined(__riscv_zvfh)
-            size_t vl = __riscv_vsetvl_e16m1(n - j);
+            size_t vl = (size_t)(n - j) >= __riscv_vsetvlmax_e16m1() ? __riscv_vsetvlmax_e16m1() : __riscv_vsetvl_e16m1(n - j);
             vfloat16m1_t vc0 = __riscv_vle16_v_f16m1(&C[i * ldc + j], vl);
             vc0 = __riscv_vfmul_vf_f16m1(vc0, beta, vl);
             vfloat16m1_t vc1 = __riscv_vfmv_v_f_f16m1(0, vl);
@@ -182,7 +182,7 @@ void opt_gemm(int m, int n, int k,
 
             __riscv_vse16_v_f16m1(&C[i * ldc + j], vc, vl);
 #else
-            size_t vl = __riscv_vsetvl_e64m1(n - j);
+            size_t vl = (size_t)(n - j) >= __riscv_vsetvlmax_e64m1() ? __riscv_vsetvlmax_e64m1() : __riscv_vsetvl_e64m1(n - j);
             vfloat64m1_t vc0 = __riscv_vle64_v_f64m1(&C[i * ldc + j], vl);
             vc0 = __riscv_vfmul_vf_f64m1(vc0, beta, vl);
             vfloat64m1_t vc1 = __riscv_vfmv_v_f_f64m1(0, vl);
@@ -288,7 +288,7 @@ void opt_gemm_blocked(int m, int n, int k,
 {
     for (int j = 0; j < n; ) {
 #if defined(__riscv_zvfh)
-        size_t vl = __riscv_vsetvl_e16m1(n - j);
+        size_t vl = (size_t)(n - j) >= __riscv_vsetvlmax_e16m1() ? __riscv_vsetvlmax_e16m1() : __riscv_vsetvl_e16m1(n - j);
             vfloat16m1_t vc0 = __riscv_vfmul_vf_f16m1(__riscv_vle16_v_f16m1(&C[ 0 * ldc + j], vl), beta, vl);
             vfloat16m1_t vc1 = __riscv_vfmul_vf_f16m1(__riscv_vle16_v_f16m1(&C[ 1 * ldc + j], vl), beta, vl);
             vfloat16m1_t vc2 = __riscv_vfmul_vf_f16m1(__riscv_vle16_v_f16m1(&C[ 2 * ldc + j], vl), beta, vl);
@@ -359,7 +359,7 @@ void opt_gemm_blocked(int m, int n, int k,
             __riscv_vse16_v_f16m1(&C[14 * ldc + j], vc14, vl);
             __riscv_vse16_v_f16m1(&C[15 * ldc + j], vc15, vl);
 #else
-        size_t vl = __riscv_vsetvl_e64m1(n - j);
+        size_t vl = (size_t)(n - j) >= __riscv_vsetvlmax_e64m1() ? __riscv_vsetvlmax_e64m1() : __riscv_vsetvl_e64m1(n - j);
             vfloat64m1_t vc0 = __riscv_vfmul_vf_f64m1(__riscv_vle64_v_f64m1(&C[ 0 * ldc + j], vl), beta, vl);
             vfloat64m1_t vc1 = __riscv_vfmul_vf_f64m1(__riscv_vle64_v_f64m1(&C[ 1 * ldc + j], vl), beta, vl);
             vfloat64m1_t vc2 = __riscv_vfmul_vf_f64m1(__riscv_vle64_v_f64m1(&C[ 2 * ldc + j], vl), beta, vl);
@@ -462,6 +462,14 @@ void report_correctness(const char *label) {
            label, max_rel_diff, max_rel_diff < 1e-2 ? "PASS" : "FAIL");
 }
 
+/* WARMUP_RUNS: untimed calls of each kernel before its measured call, so the
+ * measurement sees warm I-/D-caches and branch predictor instead of
+ * first-touch costs. Every kernel fully overwrites C (beta = 0), so the
+ * extra calls don't change the result. Default 0 = original cold behavior. */
+#ifndef WARMUP_RUNS
+#define WARMUP_RUNS 0
+#endif
+
 int main() {
 
     target_float alpha = 1.0;
@@ -483,6 +491,9 @@ int main() {
     WRITE_CSR(65, mhpmevent5);
 
     printf("Starting Scalar GEMM...\n\n");
+
+    for (int w = 0; w < WARMUP_RUNS; ++w)
+        scalar_gemm(M, N, K, alpha, A, K, B, N, beta, C, N);
 
     cycle_count   = READ_CSR(mcycle);
     inst_count    = READ_CSR(minstret);
@@ -507,6 +518,9 @@ int main() {
     for (int idx = 0; idx < M * N; ++idx) C_ref[idx] = C[idx];
 
     printf("\nStarting Optimized GEMM (opt_gemm)...\n\n");
+
+    for (int w = 0; w < WARMUP_RUNS; ++w)
+        opt_gemm(M, N, K, alpha, A, K, B, N, beta, C, N);
 
     cycle_count   = READ_CSR(mcycle);
     inst_count    = READ_CSR(minstret);
@@ -541,6 +555,9 @@ int main() {
     printf("hpmcounter[5]: VectorStore = %llu\n", hpmcounter[5]);
 
     printf("\nStarting Row-Blocked GEMM (opt_gemm_blocked)...\n\n");
+
+    for (int w = 0; w < WARMUP_RUNS; ++w)
+        opt_gemm_blocked(M, N, K, alpha, A, K, B, N, beta, C, N);
 
     cycle_count   = READ_CSR(mcycle);
     inst_count    = READ_CSR(minstret);

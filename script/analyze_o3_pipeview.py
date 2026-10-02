@@ -3,7 +3,7 @@
 doc/perf_analysis_O3CPU.md.
 
 Usage:
-    script/analyze_o3_pipeview.py TRACE BINARY [KERNEL ...]
+    script/analyze_o3_pipeview.py [--last-call] TRACE BINARY [KERNEL ...]
     e.g. script/analyze_o3_pipeview.py test/m5out_pipeview/pipeview.trace \
              test/gemm_riscv opt_gemm opt_gemm_blocked
 
@@ -11,6 +11,8 @@ The trace comes from
     gem5.opt --debug-flags=O3PipeView --debug-file=pipeview.trace ...
 Kernel PC ranges are taken from the binary's symbol table (llvm-nm-18 -S),
 so they track rebuilds. Default kernels: opt_gemm, opt_gemm_blocked.
+--last-call keeps only the kernel's last invocation (from the last committed
+fetch of its entry PC on), e.g. the timed call of a WARMUP_RUNS=1 build.
 
 For each kernel (records filtered by PC range; retire=0 = squashed) prints:
   1. summary: committed/squashed micro-ops, span, IPC, commit-width histogram
@@ -191,15 +193,22 @@ def analyze(name, rs):
 
 
 def main():
-    if len(sys.argv) < 3:
+    args = sys.argv[1:]
+    last_call = '--last-call' in args
+    args = [a for a in args if a != '--last-call']
+    if len(args) < 2:
         sys.exit(__doc__)
-    trace, binary = sys.argv[1], sys.argv[2]
-    names = sys.argv[3:] or ['opt_gemm', 'opt_gemm_blocked']
+    trace, binary = args[0], args[1]
+    names = args[2:] or ['opt_gemm', 'opt_gemm_blocked']
     ranges = kernel_ranges(binary, names)
     recs = parse_trace(trace)
     print(f'{len(recs)} micro-op records in {trace}')
     for name, (lo, hi) in ranges.items():
         rs = [r for r in recs if lo <= r['pc'] < hi]
+        if last_call:
+            entries = [r['sn'] for r in rs if r['pc'] == lo and r.get('retire', 0) > 0]
+            if entries:
+                rs = [r for r in rs if r['sn'] >= entries[-1]]
         if not rs:
             print(f'== {name}: no records in [{lo:#x}, {hi:#x})')
             continue
