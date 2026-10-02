@@ -349,6 +349,35 @@ Done:
   `src/gemm.c`**. Net win warm without compression (opt −10%, blocked −2%),
   but a **net loss in the default compressed build** (cold +4% / +10%, warm
   +7% / +19%) until the loop-alignment item below is done.
+
+  > **Reverting `vsetvlmax`, if needed** (e.g. the alignment fix doesn't pan
+  > out and the default build should go back to the faster original code):
+  > the change is exactly four lines in `src/gemm.c` (`:129`, `:185`, `:291`,
+  > `:362`, introduced in commit `58cf557`), each of the form
+  >
+  > ```c
+  > size_t vl = (size_t)(n - j) >= __riscv_vsetvlmax_e64m1() ? __riscv_vsetvlmax_e64m1() : __riscv_vsetvl_e64m1(n - j);
+  > ```
+  >
+  > (`e16m1` on the two `__riscv_zvfh` sites). The original is
+  >
+  > ```c
+  > size_t vl = __riscv_vsetvl_e64m1(n - j);
+  > ```
+  >
+  > Revert only those lines (keeps `WARMUP_RUNS` and everything else):
+  >
+  > ```sh
+  > sed -i -E 's/size_t vl = \(size_t\)\(n - j\) >= __riscv_vsetvlmax_e(16|64)m1\(\) \? __riscv_vsetvlmax_e(16|64)m1\(\) : (__riscv_vsetvl_e(16|64)m1\(n - j\));/size_t vl = \3;/' src/gemm.c
+  > git diff src/gemm.c   # expect exactly 4 changed lines, all vsetvl
+  > ```
+  >
+  > Then rebuild (`make -B gemm M=16`) and check with
+  > `llvm-objdump-18 -d --no-show-raw-insn test/gemm_riscv` that the in-loop
+  > `vsetvli` is back (blocked inner loop starts with
+  > `vsetvli zero, a0, e64, m1, ta, ma`). Expected O3 numbers after revert
+  > (`O3_SIMD_FMA_OPLAT=6`): cold opt / blocked = 1,790 / 1,625, warm
+  > (`WARMUP=1`) = 1,215 / 739. Update the status entry above accordingly.
 - [x] I-cache `TaggedPrefetcher` knob (`O3_ICACHE_PF_DEGREE`) and degree sweep.
 
 TODO:
