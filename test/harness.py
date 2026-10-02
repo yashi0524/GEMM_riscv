@@ -14,6 +14,7 @@ pattern_script  = f"{pattern_root}/script"
 test_dir        = f"{pattern_root}/test"
 test_config_path = f"{test_dir}/config/test_config.json"
 sim_config_gem5    = f"{pattern_root}/sim_config/gem5_riscv_demo_riscv_baremetal_semihost_minor.py"
+sim_config_gem5_o3 = f"{pattern_root}/sim_config/gem5_riscv_demo_riscv_baremetal_semihost_o3.py"
 sim_config_whisper = f"{pattern_root}/sim_config/whisper_rv64gcv_config.json"
 
 sys.path.append(f"{pattern_script}/")
@@ -22,7 +23,10 @@ from python_log_parser import sim_log_parser
 
 # --- Simulator toggles ---
 whisper_test = True
-gem5_test    = True
+gem5_test    = True   # gem5 MinorCPU (in-order)
+gem5_o3_test = True   # gem5 O3CPU (out-of-order) — stall-cause stats (ROB/
+                       # IQ/SQ-full etc.) live under system.cpu.rename.*/
+                       # iew.* in the resulting m5out/stats.txt
 log_parse    = True
 
 # --- Benchmark registry ---
@@ -61,13 +65,26 @@ BENCHES = [
     },
 ]
 
+def o3_paths(bench):
+    """Derive the O3 run's log/m5out paths from the bench's existing
+    (MinorCPU) ones — e.g. gem5_run_log.txt -> gem5_run_log_o3.txt,
+    m5out -> m5out_o3 — so adding a bench to BENCHES automatically gets
+    an O3 variant too, with no per-entry bookkeeping."""
+    gem5_o3_log = bench["gem5_log"].replace(".txt", "_o3.txt")
+    gem5_o3_m5out = f"{bench['m5out']}_o3"
+    return gem5_o3_log, gem5_o3_m5out
+
 def clean():
     removed = []
     for bench in BENCHES:
-        for f in (bench["whisper_log"], bench["gem5_log"], bench["output"]):
+        gem5_o3_log, gem5_o3_m5out = o3_paths(bench)
+        for f in (bench["whisper_log"], bench["gem5_log"], gem5_o3_log, bench["output"]):
             if os.path.exists(f):
                 os.remove(f)
                 removed.append(f)
+        if os.path.isdir(gem5_o3_m5out):
+            shutil.rmtree(gem5_o3_m5out)
+            removed.append(gem5_o3_m5out)
     for entry in os.listdir(test_dir):
         if entry == "m5out" or entry.endswith("_m5out"):
             d = os.path.join(test_dir, entry)
@@ -117,10 +134,30 @@ for bench in [b for b in BENCHES if b["enabled"]]:
         sim_g.m5out_dir    = bench["m5out"]
         sim_g.run_pattern()
 
+    gem5_o3_log, gem5_o3_m5out = o3_paths(bench)
+    if gem5_o3_test:
+        shutil.rmtree(gem5_o3_m5out, ignore_errors=True)
+        sim_o3 = riscv_sim()
+        sim_o3.root         = pattern_root
+        sim_o3.test_dir     = test_dir
+        sim_o3.simulator    = "gem5"
+        sim_o3.test_pattern = binary
+        sim_o3.sim_config   = sim_config_gem5_o3
+        sim_o3.logfile      = gem5_o3_log
+        sim_o3.m5out_dir    = gem5_o3_m5out
+        sim_o3.run_pattern()
+
     if log_parse:
         parser = sim_log_parser()
         parser.log_parse(bench["whisper_log"], "whisper")
         parser.dump_result(bench["output"], "whisper")
         parser.log_parse(bench["gem5_log"], "gem5")
         parser.dump_result(bench["output"], "gem5", mode="a")
+        # separate parser instance so O3's counters don't get appended into
+        # the same list as Minor's above (log_parse() accumulates, it
+        # doesn't replace) — "gem5-o3" as sim_select both picks the right
+        # (non-whisper) result list and labels the dump_result() header.
+        parser_o3 = sim_log_parser()
+        parser_o3.log_parse(gem5_o3_log, "gem5-o3")
+        parser_o3.dump_result(bench["output"], "gem5-o3", mode="a")
         parser.print_output(bench["output"])
