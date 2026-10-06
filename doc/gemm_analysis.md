@@ -236,6 +236,13 @@ register-resident-accumulator + 8-way-unroll rewrite roughly doubles that
 (up to 9.4%) by fixing memory traffic and breaking a serial dependency
 chain.
 
+> **Revisited in [How to generate the roofline](#how-to-generate-the-roofline):**
+> the AI on this sweep's x-axis counts bytes moved by vector load/store
+> *instructions* (L1-side traffic), but the slope uses *DRAM* bandwidth.
+> Measured per memory level, every kernel's DRAM-level AI is ~4.1–4.5 FLOP/B
+> (FP16/O3), so no kernel crosses the DRAM ridge; `opt_gemm_blocked` crosses
+> the *L1* ridge instead. The paragraph below is kept as originally written.
+
 **`opt_gemm_blocked` goes a step further and actually crosses the ridge
 point** — the first configuration in this whole investigation to do so.
 Eliminating `B`'s redundant per-row reload pushes FP64's AI from 0.222 to
@@ -250,3 +257,180 @@ independent-chain unrolling) gets close to the compute roofline; `gemm`,
 even with its memory traffic minimized and dependency chains broken, still
 carries per-row loop overhead and small-problem fixed costs that keep it
 well short.
+
+## How to generate the roofline
+
+The sweep chart above puts every kernel on one memory slope. This section
+builds a **hierarchical roofline** instead — one slope and one AI per memory
+level — measured end to end for one configuration (FP16, O3CPU, all three
+kernels), and documents the flow so it can be re-run.
+
+![Hierarchical roofline: FP16 GEMM on O3CPU, DRAM and L1 traffic per kernel](hroofline_fp16_o3.svg)
+
+### What the slopes mean
+
+For one memory level:
+
+```
+attainable GFLOP/s = min( peak compute,  bandwidth × AI )
+AI = FLOPs / bytes moved at that level
+```
+
+- **Compute roof** (flat): the core can't exceed peak FLOP/s however little
+  data it moves.
+- **Bandwidth slope**: if each byte supports only AI FLOPs and the level
+  delivers BW bytes/s, you can't exceed BW × AI. On log-log axes `y = BW·x`
+  is a slope-1 line; a faster level is the same line shifted up.
+- **Ridge point** = peak / BW: left of it that level's bandwidth binds,
+  right of it compute binds.
+
+Data crosses two "pipes", each with its own width and its own byte count:
+
+```
+ DRAM ──12.8 GB/s──▶ L1 D-cache ──67.9 GB/s──▶ registers ──▶ FMA units (165.7 GFLOP/s)
+        Q_DRAM bytes                Q_L1 bytes
+```
+
+| | DRAM slope | L1 slope |
+|---|---|---|
+| bandwidth | 12.8 GB/s, DDR3-1600 theoretical peak | 67.9 GB/s, measured (`src/l1_bw.c`) |
+| bytes counted | lines crossing the DRAM bus: D-cache fills + dirty write-backs | bytes moved by the kernel's load/store instructions |
+| ridge | 165.7 / 12.8 = **12.9 FLOP/B** | 165.7 / 67.9 = **2.4 FLOP/B** |
+| improves AI | less DRAM traffic: cache-level reuse | fewer load instructions: register-level reuse (unroll, blocking) |
+
+Each point is judged only against **its own level's** slope; the kernel is
+bound by the tightest ceiling, `min(peak, 12.8 × AI_DRAM, 67.9 × AI_L1)`. Both
+points of one call share FLOPs and time, so they sit at the **same height**
+and differ only in x; the horizontal gap between them is how much the cache
+saves. The sweep chart mixed the two (L1-style bytes on x, DRAM slope as
+ceiling), which is why its O3 rows show `mem% > 100%`.
+
+### Generation flow
+
+```
+ ┌──────────────────────────── build (Makefile, clang-18) ─────────────────────────────┐
+ │ gemm.c -DROOFLINE_KERNEL=1|2|3 (FP16, N=64)   l1_bw.c            fmacc_fp16.c       │
+ └──────────────┬───────────────────────────────────┬──────────────────────┬───────────┘
+                ▼                                   ▼                      ▼
+ ┌─ gem5 O3, O3_SIMD_FMA_OPLAT=6 ──────────────────────────────────────────────────────┐
+ │ per kernel (+ O3PipeView trace):    │ L1 BW: warm-up pass, │ peak compute: 16     │
+ │  evict → [reset] cold call [dump 1] │ then 64 timed passes │ independent FMA      │
+ │        → [reset] evict     [dump 2] │ of vle16 over 16 KB  │ chains, 10,000 FMAs  │
+ │  warm-up → [reset] warm   [dump 3]  │                      │                      │
+ └───────┬───────────────┬─────────────┴──────────┬───────────┴──────────┬───────────┘
+         ▼               ▼                        ▼                      ▼
+  run log: mcycle   stats.txt sections:      bytes / mcycle          total_ops × vl × 2
+  cold / warm       dump 1: D-cache fills    → GB/s @ 1 GHz          / mcycle → GFLOP/s
+                    dump 2: write-backs
+                    dump 3: D-cache fills
+                         │
+          pipeview trace: committed load/store micro-ops inside the
+          kernel × access width (vector micro-op 64 B, flh 2 B, ld/sd 8 B)
+          → Q_L1 per call
+                         ▼
+ ┌─ script/gen_hroofline_svg.py ───────────────────────────────────────────────────────┐
+ │ parses all of the above (nothing hand-copied) → FLOPs = 2·M·N·K,                    │
+ │ perf = FLOPs / mcycle, Q_DRAM = (fills + write-backs) × 64 B, AI = FLOPs / Q        │
+ │ → prints the data table → draws doc/hroofline_fp16_o3.svg                           │
+ └─────────────────────────────────────────────────────────────────────────────────────┘
+```
+
+1. **Build** one binary per measurement. `ROOFLINE_KERNEL` (1 = scalar,
+   2 = opt, 3 = blocked) turns `main()` into a run of that kernel alone. It
+   is **gem5-only**: the m5 stats pseudo-instructions it uses are illegal on
+   whisper and real hardware. Default builds are unaffected.
+2. **Isolate each phase in gem5's stats.** Each phase is bracketed by
+   `m5_reset_stats` / `m5_dump_stats`, so `stats.txt` gets one section per
+   phase holding only that phase's counts.
+3. **Make the cold call cold.** The startup code touches A/B/C (`.data` copy,
+   `.bss` zero), so they start cached; reading a 128 KiB buffer (2× the
+   D-cache) evicts them first. The buffer is read through a `volatile`
+   pointer — it is never written, so plain loads fold to 0 and nothing would
+   be evicted.
+4. **Catch the writes.** C reaches DRAM only when its dirty lines are
+   evicted, so a second eviction pass is measured on its own and its
+   write-back count is the kernel's DRAM write traffic. Prints are deferred
+   to the end so `printf`'s buffer writes don't show up as write-backs.
+5. **Count L1 bytes from the trace.** gem5 counts cache accesses, not bytes,
+   so each committed load/store micro-op inside the kernel's PC range is
+   weighted by its width. gem5 splits a vector access into one micro-op per
+   register's worth of active elements, so 64 B per vector micro-op holds
+   regardless of LMUL (`scalar_gemm` is compiled with `e16, m4` but runs with
+   vl = 32, one register).
+6. **Measure the ceilings**: `l1_bw.c` (load-only stream over an L1-resident
+   buffer) and `fmacc_fp16.c` x16 at the same FMA latency; DRAM is the
+   datasheet peak.
+7. **Plot.** `script/gen_hroofline_svg.py` reads the run logs, `stats.txt`
+   sections and traces, prints the table below, and writes the SVG (pure
+   stdlib, `<title>` tooltips on points).
+
+Commands (from the `gemm/` directory; `$GEM5` = the gem5 `build/RISCV/gem5.opt`):
+
+```sh
+source script/0_env_var_setup.sh
+FL="-DM=16 -DN=64 -DK=16 -Dtarget_float=_Float16 -mllvm -force-vector-width=32 -mllvm -force-vector-interleave=1"
+for k in 1:scalar 2:opt 3:blocked; do
+  make -B test/gemm_riscv MARCH=rv64gcv_zvfh BENCH_EXTRA_FLAGS="$FL -DROOFLINE_KERNEL=${k%%:*}"
+  cp test/gemm_riscv test/gemm_rl_fp16_${k##*:}_riscv
+done
+make -B test/l1_bw_riscv MARCH=rv64gcv_zvfh
+make -B fmacc_fp16
+
+C=sim_config/gem5_riscv_demo_riscv_baremetal_semihost_o3.py
+for k in scalar opt blocked; do
+  O3_SIMD_FMA_OPLAT=6 $GEM5 --debug-flags=O3PipeView --debug-file=pipeview.trace \
+    -d test/m5out_rl_fp16_o3_$k $C test/gemm_rl_fp16_${k}_riscv > test/rl_fp16_o3_${k}_run.log 2>&1
+done
+O3_SIMD_FMA_OPLAT=6 $GEM5 -d test/m5out_l1_bw_o3 $C test/l1_bw_riscv > test/l1_bw_o3_run.log 2>&1
+O3_SIMD_FMA_OPLAT=6 $GEM5 -d test/m5out_fmacc_fp16_o3_oplat6 $C test/fmacc_fp16_riscv \
+  > test/fmacc_fp16_o3_oplat6_run.log 2>&1
+
+python3 script/gen_hroofline_svg.py
+make -B gemm M=16          # restore the default test/gemm_riscv
+```
+
+### Result: FP16, O3CPU (2026-10-05)
+
+Ceilings: compute 165.7 GFLOP/s · L1 67.9 GB/s (ridge 2.44) · DRAM 12.8 GB/s
+(ridge 12.94). 32,768 FLOP per call; all three kernels PASS the correctness
+check against `scalar_gemm`.
+
+| kernel | state | level | bytes | AI (FLOP/B) | mcycle | GFLOP/s | ceiling | % of ceiling |
+|---|---|---|---:|---:|---:|---:|---:|---:|
+| scalar_gemm | cold | DRAM | 7,360 | 4.45 | 7,293 | 4.49 | 57.0 | 8% |
+| scalar_gemm | cold | L1 | 103,096 | 0.32 | 7,293 | 4.49 | 21.6 | 21% |
+| scalar_gemm | warm | DRAM | 64 | 512 | 6,323 | 5.18 | 165.7 | 3% |
+| scalar_gemm | warm | L1 | 103,096 | 0.32 | 6,323 | 5.18 | 21.6 | 24% |
+| opt_gemm | cold | DRAM | 7,296 | 4.49 | 3,661 | 8.95 | 57.5 | 16% |
+| opt_gemm | cold | L1 | 38,512 | 0.85 | 3,661 | 8.95 | 57.8 | 15% |
+| opt_gemm | warm | DRAM | 64 | 512 | 1,478 | 22.17 | 165.7 | 13% |
+| opt_gemm | warm | L1 | 38,512 | 0.85 | 1,478 | 22.17 | 57.8 | 38% |
+| opt_gemm_blocked | cold | DRAM | 7,936 | 4.13 | 3,073 | 10.66 | 52.9 | 20% |
+| opt_gemm_blocked | cold | L1 | 8,288 | 3.95 | 3,073 | 10.66 | 165.7 | 6% |
+| opt_gemm_blocked | warm | DRAM | 64 | 512 | 1,139 | 28.77 | 165.7 | 17% |
+| opt_gemm_blocked | warm | L1 | 8,288 | 3.95 | 1,139 | 28.77 | 165.7 | 17% |
+
+- **DRAM-level AI is the same for every implementation (~4.1–4.5).** The
+  ~6–8 KB working set fits in L1, so each kernel brings each element from
+  DRAM once — the compulsory traffic (A 512 B + B 2 KiB + C read and write
+  2 KiB each = 6,656 B → 4.9 FLOP/B, plus a few stack lines). The
+  optimizations move the DRAM point **up**, not right.
+- **L1-level AI is where the implementations differ: 0.32 → 0.85 → 3.95.**
+  `opt_gemm` keeps accumulators in registers; `opt_gemm_blocked` also reuses
+  each B vector across all 16 rows. `scalar_gemm` and `opt_gemm` sit left of
+  the L1 ridge (L1-bandwidth region); `opt_gemm_blocked` is the only one right
+  of it (compute region). For blocked, the L1 and DRAM points nearly
+  coincide: almost every byte it loads is compulsory.
+- **Which ceiling binds:** cold, `scalar_gemm` is bound by L1 (21.6 < 57.0),
+  `opt_gemm` by L1 and DRAM about equally (57.8 vs 57.5), `opt_gemm_blocked`
+  by DRAM (52.9). None is close to its ceiling cold (6–21%): the cold call is
+  latency-bound (serial misses, cold I-cache), not bandwidth-bound. Warm,
+  DRAM traffic is one line, and `opt_gemm` reaches 38% of its L1 ceiling.
+- **Versus the sweep chart:** its AIs (0.320 / 0.889 / 5.333) count vector
+  instructions only. The trace-based L1 count adds scalar A loads (`flh`)
+  and stack spills: `opt_gemm_blocked` moves 8,288 B, not 6,144 B.
+
+Caveats: the DRAM slope is the theoretical peak, not measured; the L1 slope is
+load-only (the kernels also store); write-backs include a few stack lines
+besides C; FMA latency is opLat=6, whereas the sweep above used the stock
+opLat=1.

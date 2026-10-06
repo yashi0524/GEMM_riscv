@@ -462,6 +462,93 @@ void report_correctness(const char *label) {
            label, max_rel_diff, max_rel_diff < 1e-2 ? "PASS" : "FAIL");
 }
 
+#ifdef ROOFLINE_KERNEL
+/* ROOFLINE_KERNEL (gem5 only: the m5 pseudo-ops below are illegal
+ * instructions on whisper / real hardware): 1 = scalar_gemm, 2 = opt_gemm,
+ * 3 = opt_gemm_blocked. main() runs only that kernel and brackets each phase
+ * with m5_reset_stats / m5_dump_stats, so stats.txt holds one section per
+ * phase, in this order:
+ *   dump 1  cold call   - A/B/C evicted first, so D-cache fills = the
+ *                         kernel's DRAM read traffic
+ *   dump 2  evict       - pushes C's dirty lines out: D-cache writebacks =
+ *                         the kernel's (deferred) DRAM write traffic
+ *   dump 3  warm call   - after one untimed warm-up call
+ * (gem5 appends a 4th section at exit; ignore it.) The startup code touches
+ * A/B/C (.data copy / .bss zero), so without the eviction they would already
+ * be cached. See doc/gemm_analysis.md, "How to generate the roofline". */
+#if ROOFLINE_KERNEL == 1
+#define RL_KERNEL scalar_gemm
+#define RL_NAME   "scalar_gemm"
+#elif ROOFLINE_KERNEL == 2
+#define RL_KERNEL opt_gemm
+#define RL_NAME   "opt_gemm"
+#elif ROOFLINE_KERNEL == 3
+#define RL_KERNEL opt_gemm_blocked
+#define RL_NAME   "opt_gemm_blocked"
+#else
+#error "ROOFLINE_KERNEL must be 1, 2 or 3"
+#endif
+
+/* gem5 RISC-V m5op: .word 0x7b | (func << 25), args in a0 (delay), a1 (period) */
+#define M5OP(func) __asm__ volatile("li a0, 0\n\tli a1, 0\n\t.word %0" \
+                                    :: "i"(0x7b | ((func) << 25)) : "a0", "a1", "memory")
+#define m5_reset_stats() M5OP(0x40)
+#define m5_dump_stats()  M5OP(0x41)
+
+/* 2x the 64 KiB 4-way D-cache: reading it once evicts every older line */
+#define EVICT_BYTES (128 * 1024)
+static unsigned char evict_buf[EVICT_BYTES] __attribute__((aligned(64)));
+static volatile unsigned long evict_sink;
+
+static void evict_dcache(void) {
+    /* volatile: evict_buf is never written, so plain loads fold to 0 */
+    const volatile unsigned char *p = evict_buf;
+    unsigned long sum = 0;
+    for (int i = 0; i < EVICT_BYTES; i += 64) sum += p[i];
+    evict_sink = sum;
+}
+
+/* printf only after the last dump: its buffer writes would otherwise show
+ * up as dirty-line writebacks in the evict phase */
+static unsigned long long rl_cycles[2], rl_insts[2];
+
+static void rl_call(int idx, target_float alpha, target_float beta) {
+    m5_reset_stats();
+    cycle_count = READ_CSR(mcycle);
+    inst_count  = READ_CSR(minstret);
+    RL_KERNEL(M, N, K, alpha, A, K, B, N, beta, C, N);
+    cycle_count = READ_CSR(mcycle)   - cycle_count;
+    inst_count  = READ_CSR(minstret) - inst_count;
+    m5_dump_stats();
+    rl_cycles[idx] = cycle_count;
+    rl_insts[idx]  = inst_count;
+}
+
+static int roofline_main(void) {
+    target_float alpha = 1.0;
+    target_float beta  = 0.0;
+
+    evict_dcache();
+    rl_call(0, alpha, beta);               /* dump 1: cold */
+
+    m5_reset_stats();
+    evict_dcache();
+    m5_dump_stats();                       /* dump 2 */
+
+    RL_KERNEL(M, N, K, alpha, A, K, B, N, beta, C, N);   /* warm-up */
+    rl_call(1, alpha, beta);               /* dump 3: warm */
+
+    printf("roofline %s cold: mcycle = %llu minstret = %llu\n", RL_NAME, rl_cycles[0], rl_insts[0]);
+    printf("roofline %s warm: mcycle = %llu minstret = %llu\n", RL_NAME, rl_cycles[1], rl_insts[1]);
+
+    /* correctness: kernel result -> C_ref, scalar reference -> C */
+    for (int idx = 0; idx < M * N; ++idx) C_ref[idx] = C[idx];
+    scalar_gemm(M, N, K, alpha, A, K, B, N, beta, C, N);
+    report_correctness(RL_NAME " (reference = scalar_gemm)");
+    return 0;
+}
+#endif /* ROOFLINE_KERNEL */
+
 /* WARMUP_RUNS: untimed calls of each kernel before its measured call, so the
  * measurement sees warm I-/D-caches and branch predictor instead of
  * first-touch costs. Every kernel fully overwrites C (beta = 0), so the
@@ -471,6 +558,9 @@ void report_correctness(const char *label) {
 #endif
 
 int main() {
+#ifdef ROOFLINE_KERNEL
+    return roofline_main();
+#endif
 
     target_float alpha = 1.0;
     target_float beta = 0.0;
