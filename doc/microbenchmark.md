@@ -86,6 +86,97 @@ in-order pipeline's issue bandwidth for this instruction mix — reaching
 15.73 GFLOP/s, 98.3% of the 16.0 GFLOP/s theoretical max. Further unrolling
 would buy almost nothing without a wider-issue (or out-of-order) core.
 
+## Front end vs. back end (MinorCPU)
+
+The sections below separate limits that come from the **front end** from
+limits in the **back end**. Every pipelined CPU has both, in-order ones
+included: in-order vs. out-of-order describes how the back end schedules
+instructions; the front end's job — deliver a stream of decoded
+instructions — is the same either way.
+
+- **Front end**: getting instructions *into* Execute — fetching bytes from
+  the I-cache, splitting them into instructions, predicting branches,
+  decoding.
+- **Back end**: Execute — issue (scoreboard, in-order, 2-wide), the
+  functional units, commit. The FU-count and dual-issue discussion is all
+  back end.
+
+MinorCPU's pipeline is four stages; the first three are the front end:
+
+```
+            ┌──────────────── front end ────────────────┐   ┌────── back end ──────┐
+ I-cache ◀─▶ Fetch1 ──▶ Fetch2 ──────────▶ Decode ──────▶ Execute (issue → FUs → commit)
+            requests    splits a line into   macro-op →     scoreboard, FU pool,
+            64 B lines  instructions;        micro-ops      in-order 2-wide issue
+                        BRANCH PREDICTION    (2 per cycle)
+                ▲            │
+                └────────────┘  "branch predicted taken: fetch from <target> instead"
+```
+
+| stage | job | default that matters here |
+|---|---|---|
+| Fetch1 | requests a 64 B line from the I-cache | `fetch1FetchLimit = 1`: one line request in flight |
+| I-cache | returns the line | tag + data + response = 2 + 2 + 2 cycles |
+| Fetch2 | splits the line into instructions, predicts branches | on predicted-taken, tells Fetch1 to change stream (`fetch1ToFetch2BackwardDelay = 1`) |
+| Decode | macro-op → micro-ops | 2 per cycle (`decodeInputWidth = 2`); not a limiter here |
+
+**The taken-branch bubble.** At the loop's taken branch the instructions
+that follow it in memory are the wrong ones. Fetch2 sees the branch,
+predicts taken, and redirects Fetch1 to the loop top; Fetch1 issues a new
+line request and — with only one request in flight — waits out the full
+I-cache latency before anything new arrives:
+
+```
+cycle    0     1     2     3     4     5     6     7
+Fetch1   ·     req   ·     ·     ·     ·     ·     req …   one line request in flight
+I-cache        ├──── 2 + 2 + 2 ────┤
+Fetch2   bltu  ~     ~     ~     ~     ~     loop top       ← "taken!" at cycle 0
+                                                               → redirect Fetch1 (1 cycle)
+Decode   …     ~     ~     ~     ~     ~     ~     …
+Execute  …     ·     ·     ·     ·     ·     ·     vfmacc    nothing new to issue
+         └──────────── ≈6-cycle bubble per taken branch ────────────┘
+```
+
+The x16 loop also spans two 64 B lines, so each iteration needs two line
+fetches back to back.
+
+**Front-end throughput.** The front end has its own throughput: how many
+instructions per cycle it actually delivers to the back end. Two numbers to
+keep apart:
+
+| | meaning | x16 loop |
+|---|---|---|
+| peak width | most it can deliver in one cycle | 2 instructions/cycle |
+| effective throughput | what it delivers on average after its stalls (taken-branch redirects, I-cache latency, misses, mispredicts) | 19 instructions / ≈15.3 cycles ≈ **1.25 IPC** |
+
+The back end has a throughput too (FUs, dependencies, issue width). Over a
+steady stretch the CPU runs at roughly the slower of the two; the buffers
+between stages only absorb short gaps:
+
+```
+achieved IPC ≈ min( front-end delivery rate,  back-end consumption rate )
+```
+
+| x16 config | front end supplies | back end can consume | binding | measured IPC |
+|---|---:|---:|---|---:|
+| 1 FloatSimd FU | ≈1.25 | 19/16 ≈ 1.19 (one `vfmacc`/cycle) | back end | 1.17 |
+| 2 FloatSimd FUs | ≈1.25 | up to 2 | front end | 1.25 |
+| 2 FUs + `MINOR_FETCH_LIMIT=4 MINOR_ICACHE_LAT=1` | ≈1.56 | up to 2 | front end, at a higher rate | 1.56 |
+
+That is the "2nd FU barely helps" result in one line: the 2nd FU raised the
+back end's limit, but the front end's (1.25) was only just above the old
+back-end limit (1.19).
+
+The front end also has a **latency** side, separate from throughput: how
+long it takes to refill after a redirect (e.g. the branch-misprediction
+penalty). In this loop the per-iteration redirect is what pulls throughput
+down; a deep front end can still sustain high throughput on straight-line
+code and pays its latency only when the instruction stream changes
+direction. An out-of-order core like O3 also has a much stronger front end
+(8-wide fetch, several fetches in flight, early BTB redirect), which is why
+the same 3-instruction serial loop runs at 1 iteration/cycle on O3 with
+opLat 1.
+
 ## What limits the serial loop (FU latency vs. front end)
 
 Unrolling helps for two reasons, and on MinorCPU the second one dominates:
