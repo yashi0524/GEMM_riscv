@@ -12,6 +12,13 @@ from m5.objects import *
 #   MINOR_FLOAT_FU_COUNT=2 gem5.opt ... this_config.py <binary>
 FLOAT_FU_COUNT = int(os.environ.get("MINOR_FLOAT_FU_COUNT", "1"))
 
+# --- FloatSimd FU latency override (diagnostic knob) ---
+# MinorDefaultFloatSimdFU has opLat=6 and srcRegsRelativeLats=[2] (a source
+# is read 2 cycles after issue), so a dependent vfmacc can issue every
+# opLat-2 = 4 cycles. Same role as O3_SIMD_FMA_OPLAT in the O3 config.
+#   MINOR_SIMD_OPLAT=1     (default unset = stock opLat 6)
+SIMD_OPLAT = os.environ.get("MINOR_SIMD_OPLAT")
+
 # --- Front-end knobs (diagnostic) ---
 # With 2 FloatSimd FUs the fmacc loop becomes fetch-bound: Minor's default
 # fetch1FetchLimit=1 allows one I-cache line fetch in flight, the I-cache
@@ -30,7 +37,8 @@ class CustomMinorFUPool(MinorDefaultFUPool):
         MinorDefaultIntFU(),
         MinorDefaultIntMulFU(),
         MinorDefaultIntDivFU(),
-    ] + [MinorDefaultFloatSimdFU() for _ in range(FLOAT_FU_COUNT)] + [
+    ] + [MinorDefaultFloatSimdFU(**({"opLat": int(SIMD_OPLAT)} if SIMD_OPLAT else {}))
+         for _ in range(FLOAT_FU_COUNT)] + [
         MinorDefaultPredFU(),
         MinorDefaultMemFU(),
         MinorDefaultMiscFU(),

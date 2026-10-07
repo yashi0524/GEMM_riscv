@@ -19,13 +19,18 @@ for (int i = 0; i < ITERS; ++i)
 ```
 
 This is a strict serial dependency chain — every `vfmacc` must wait for the
-previous one's result. On gem5 MinorCPU (in-order, dual-issue) this chain
-left the pipeline with only one stream of work, so it stalled waiting on it
-regardless of functional-unit latency. We confirmed this directly: overriding
-`MinorDefaultFloatSimdFU`'s `opLat` (6 → 2) and even `MinorDefaultIntFU`'s
-`opLat` (3 → 1) simultaneously changed the measured cycle count by less than
-0.02% — the serial chain's throughput floor comes from the pipeline's
-dual-issue width, not from how fast any single functional unit computes.
+previous one's result. On gem5 MinorCPU (in-order, dual-issue) it runs at
+6.00 cycles/`vfmacc`. Overriding `MinorDefaultFloatSimdFU`'s `opLat` (6 → 2)
+and even `MinorDefaultIntFU`'s `opLat` (3 → 1) changed the cycle count by
+less than 0.02%.
+
+> **Corrected explanation (see
+> [What limits the serial loop](#what-limits-the-serial-loop-fu-latency-vs-front-end)):**
+> the 6 cycles are not the FU latency. The loop is 3 instructions with a
+> taken branch every iteration, and MinorCPU's front end needs ≈6 cycles to
+> redirect fetch for each one; that bound sits on top of the real
+> dependency spacing (opLat − 2 = 4 cycles). An earlier version of this
+> paragraph attributed the floor to the dual-issue width, which was wrong.
 
 The fix: split the accumulation across N independent registers
 (`vc0..vcN-1`), each fed by its own `vfmacc` inside the same loop body, then
@@ -80,6 +85,102 @@ unrolling adds more: 2.66× (x1→x4), 1.60× (x4→x8), 1.36× (x8→x12), only
 in-order pipeline's issue bandwidth for this instruction mix — reaching
 15.73 GFLOP/s, 98.3% of the 16.0 GFLOP/s theoretical max. Further unrolling
 would buy almost nothing without a wider-issue (or out-of-order) core.
+
+## What limits the serial loop (FU latency vs. front end)
+
+Unrolling helps for two reasons, and on MinorCPU the second one dominates:
+it breaks the dependency chain (hides FU latency), **and** it amortizes the
+loop's taken branch over more `vfmacc`s (hides front-end redirects).
+
+**FU latency knob:** `MINOR_SIMD_OPLAT` sets `MinorDefaultFloatSimdFU`'s
+`opLat` (default unset = stock 6), same role as `O3_SIMD_FMA_OPLAT` in the O3
+config. Combined with the front-end knobs `MINOR_FETCH_LIMIT` /
+`MINOR_ICACHE_LAT` (see [below](#why-the-2nd-fu-barely-helps-the-front-end-is-almost-as-slow-as-1-fu)):
+
+| MinorCPU, `fmacc_fp16` serial loop (`addiw`, `vfmacc`, `bnez`), cycles/iteration | opLat 6 | opLat 2 | opLat 1 |
+|---|---:|---:|---:|
+| stock front end | 6.0 | 6.0 | 6.0 |
+| fast front end (`MINOR_FETCH_LIMIT=4 MINOR_ICACHE_LAT=1`) | 4.0 | 4.0 | 4.0 |
+| **no loop** (`ITERS=32`: the compiler fully unrolls the chain), issue spacing in the `MinorExecute` trace | **4** | **1** | 1 |
+
+- The loop never responds to `opLat`: it is front-end-bound (6 cycles stock,
+  ≈4 with the fast front end, the same ≈2.8-cycle redirect cost measured
+  for x16/x32 below, plus 1.5 cycles of 2-wide issue).
+- Only the branch-free chain exposes the latency, and the spacing is
+  **opLat − 2**, not opLat: `MinorDefaultFloatSimdFU` has
+  `timings = [MinorFUTiming(srcRegsRelativeLats=[2])]`, i.e. an instruction
+  reads its source registers 2 cycles after issue, so the scoreboard lets a
+  dependent `vfmacc` issue 2 cycles before its producer's result is ready.
+  The trace shows `returnCycle` stepping by 4 at opLat 6.
+
+The same front-end model accounts for the unroll table above: per iteration,
+≈ (instructions / 2) + ≈6 cycles of taken-branch bubble, assuming ~3
+loop-control instructions as in x16:
+
+| unroll | model: ((n + 3) / 2 + 6) / n cycles/vfmacc | measured |
+|---|---:|---:|
+| x4 | 2.38 | 2.26 |
+| x8 | 1.44 | 1.41 |
+| x12 | ≈1.1, capped by the 1 FloatSimd FU at 1.0 | 1.04 |
+| x16 | 1 FU bound = 1.0 | 1.02 |
+
+### Pipeline timelines
+
+`I` = issue, `E` = in the FloatSimd FU, `W` = result ready, `r` = source read
+(issue + 2), `·` = waiting, `F` = fetched, `~` = fetch bubble.
+
+**A. Dependent chain, no branches, opLat=6: one `vfmacc` every 4 cycles**
+```
+cycle        0  1  2  3  4  5  6  7  8  9 10 11 12 13 14
+vfmacc v8 #1 I  E  E  E  E  E  W
+vfmacc v8 #2 ·  ·  ·  ·  I  E  r  E  E  E  W             reads v8 at issue+2 = cycle 6 = #1's W
+vfmacc v8 #3 ·  ·  ·  ·  ·  ·  ·  ·  I  E  r  E  E  E  W
+             └─ spacing = opLat − 2 = 4 cycles (srcRegsRelativeLats=[2]) ─┘
+```
+
+**B. The real serial loop, stock front end: 6 cycles/iteration hide the 4-cycle latency**
+```
+cycle        0  1  2  3  4  5  6  7  8  9 10 11 12
+fetch        F  F  ~  ~  ~  ~  F  F  ~  ~  ~  ~  F      bnez taken → Fetch2 redirects Fetch1;
+                                                       1 line fetch in flight, I-cache 2+2+2
+vfmacc #1       I  E  E  E  E  E  W
+vfmacc #2                         I  E  r  …            could issue at 5 (A), arrives at 7
+             └──────── 6 cycles/iteration = front end, not FU latency ────────┘
+```
+With the fast front end the bubble shrinks to ≈4 cycles/iteration — equal
+to the 4-cycle latency bound, which is why opLat 6, 2 and 1 still all give
+4.0 there.
+
+**C. x16, opLat=6, 1 FU: latency fully hidden, FU busy every cycle**
+```
+cycle        0  1  2  3  4  5  6  7  8  9 …
+vfmacc vc0   I  E  E  E  E  E  W
+vfmacc vc1      I  E  E  E  E  E  W                     independent accumulators: no waiting;
+vfmacc vc2         I  E  E  E  E  E  W                  the FU is pipelined (issueLat 1), so a
+vfmacc vc3            I  E  E  E  E  E  W               new vfmacc enters it every cycle
+  …                      …
+vfmacc vc0'                     I  …                    vc0 reused 16 instructions later,
+                                                       long after its W
+→ ≈1 vfmacc/cycle (measured 1.02): the single FloatSimd FU's issue slot binds
+```
+
+Reproduce (from `gemm/`):
+
+```sh
+C=sim_config/gem5_riscv_demo_riscv_baremetal_semihost_minor.py
+MINOR_SIMD_OPLAT=1 gem5.opt $C test/fmacc_fp16_riscv                    # serial still 6.0/iter
+MINOR_SIMD_OPLAT=1 MINOR_FETCH_LIMIT=4 MINOR_ICACHE_LAT=1 gem5.opt $C test/fmacc_fp16_riscv
+make -B test/fmacc_fp16_riscv ITERS=32                                  # branch-free chain
+MINOR_SIMD_OPLAT=6 gem5.opt --debug-flags=MinorExecute,MinorScoreboard --debug-file=trace.txt \
+  $C test/fmacc_fp16_riscv
+grep "Issuing inst: .*vfmacc" m5out/trace.txt   # serial chain: every 4 cycles (every 1 at opLat 2)
+make -B fmacc_fp16                                                      # restore ITERS=10000
+```
+
+One unexplained side observation: lowering `opLat` makes the **x16** loop
+slightly *slower* (FP16 x16: 10,311 → 10,869 → 11,491 cycles at opLat
+6 → 2 → 1). It doesn't affect the conclusions above and hasn't been
+investigated.
 
 ## Why not 32 GFLOP/s? (dual-issue width vs. functional-unit count)
 
@@ -309,12 +410,25 @@ overridden.)
 | fmacc serial | 60,054 | 10,062 | **60,042** | **1.00×** |
 | fmacc x16 | 10,170 | 3,202 | **3,822** | **2.66×** |
 
-With latency actually matched, the serial chain runs at essentially
-*identical* speed on both CPU models (60,042 vs 60,054) — exactly what
-physics predicts: out-of-order execution cannot parallelize a genuine RAW
-dependency chain: there's no independent work to reorder around, so OoO
-buys nothing. The stock 5.97× "speedup" reported earlier was purely the
-opLat=1-vs-6 modeling gap, not a real OoO effect.
+With latency actually matched, the serial chain takes 60,042 cycles on O3
+vs 60,054 on Minor, but **that match is a coincidence**: O3 is latency-bound
+at exactly opLat = 6 cycles per `vfmacc`, while Minor is front-end-bound at
+≈6 cycles per loop iteration, and its own latency bound would be only
+opLat − 2 = 4 (see
+[What limits the serial loop](#what-limits-the-serial-loop-fu-latency-vs-front-end)).
+The stock 5.97× O3 "speedup" on the serial loop *is* purely the opLat 1 vs 6
+difference: O3's 8-wide fetch and branch prediction keep the 3-instruction
+loop fed, and O3 has no early source read, so the full opLat applies.
+
+**D. O3CPU serial loop: the speedup is exactly the latency setting**
+```
+opLat=1 (stock):                          opLat=6:
+cycle   0  1  2  3                        cycle   0  1  2  3  4  5  6  7  8  9 10 11 12
+#1      I  W                              #1      I  E  E  E  E  E  W
+#2         I  W                           #2                        I  E  E  E  E  E  W
+#3            I  W                        #3                                          I …
+→ 1.0 cycle/vfmacc (10,062)               → 6.0 cycles/vfmacc (60,042)
+```
 
 The x16 case is different: even with opLat matched at 6, O3 is still
 **2.66× faster than Minor** (3,822 vs 10,170) — this is a genuine,
