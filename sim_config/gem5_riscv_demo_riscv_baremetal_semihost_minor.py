@@ -12,6 +12,18 @@ from m5.objects import *
 #   MINOR_FLOAT_FU_COUNT=2 gem5.opt ... this_config.py <binary>
 FLOAT_FU_COUNT = int(os.environ.get("MINOR_FLOAT_FU_COUNT", "1"))
 
+# --- Front-end knobs (diagnostic) ---
+# With 2 FloatSimd FUs the fmacc loop becomes fetch-bound: Minor's default
+# fetch1FetchLimit=1 allows one I-cache line fetch in flight, the I-cache
+# hit costs tag+data+response = 2+2+2 cycles, and every loop-back taken
+# branch makes Fetch2 redirect Fetch1 to a fresh line. See
+# doc/microbenchmark.md, "Why not 32 GFLOP/s?".
+#   MINOR_FETCH_LIMIT=4    line fetches in flight (default 1 = stock)
+#   MINOR_ICACHE_LAT=1     I-cache tag/data/response latency, each
+#                          (default unset = 2/2/2 below)
+FETCH_LIMIT = int(os.environ.get("MINOR_FETCH_LIMIT", "1"))
+ICACHE_LAT = os.environ.get("MINOR_ICACHE_LAT")
+
 class CustomMinorFUPool(MinorDefaultFUPool):
     funcUnits = [
         MinorDefaultIntFU(),
@@ -36,6 +48,7 @@ system.m5ops_base = 0x10010000   #enables m5ops pseudo-inst decoding
 # --- CPU ---
 system.cpu = RiscvMinorCPU()
 system.cpu.executeFuncUnits = CustomMinorFUPool()
+system.cpu.fetch1FetchLimit = FETCH_LIMIT
 system.cpu.isa = RiscvISA(vlen=512, elen=64)
 
 # --- Memory bus ---
@@ -60,6 +73,11 @@ system.cpu.dcache = Cache(
     mshrs=4,
     tgts_per_mshr=20,
 )
+
+if ICACHE_LAT:
+    system.cpu.icache.tag_latency = int(ICACHE_LAT)
+    system.cpu.icache.data_latency = int(ICACHE_LAT)
+    system.cpu.icache.response_latency = int(ICACHE_LAT)
 
 # --- Connect CPU → L1 caches → membus ---
 system.cpu.icache.cpu_side = system.cpu.icache_port

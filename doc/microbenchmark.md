@@ -118,12 +118,82 @@ MINOR_FLOAT_FU_COUNT=2:            gem5 mcycle =  9,534 → 0.95 cycles/vfmacc �
 
 A second FloatSimd FU helped, but only **1.07×** — nowhere near the 2×
 (→32 GFLOP/s) a naive "more FUs = proportionally more throughput" model would
-predict. With 16 `vfmacc` + ~2 loop-control instructions per unrolled block,
-`executeIssueLimit=2` caps total issue at 18/2=9 cycles/block best case
-(0.56 cycles/vfmacc, ~28 GFLOP/s) even with 2 FloatSimd FUs available —
-we're still short of that too, so the front end (fetch/decode width, not
-just FU count) is the next limiter. Reaching 32 GFLOP/s would need both more
-FloatSimd FUs *and* a wider issue/decode front end, not one or the other.
+predict.
+
+### Why the 2nd FU barely helps: the front end is almost as slow as 1 FU
+
+With one FU, the FU and the front end are nearly equal limits; removing the
+FU limit just exposes the fetch limit sitting right behind it.
+
+The timed x16 loop is 19 instructions (16 `vfmacc` + `addi`, `srliw`,
+`bltu`), 74 bytes, so it spans **two** 64 B I-cache lines and ends in a taken
+branch every iteration. With MinorCPU's defaults:
+
+- `fetch1FetchLimit = 1` — only one I-cache line fetch in flight;
+- the I-cache hit costs tag + data + response = 2 + 2 + 2 cycles;
+- the loop-back branch is predicted in Fetch2, which then has to redirect
+  Fetch1 to a fresh line fetch.
+
+That adds ≈6 cycles of fetch bubble per iteration, so the front end supplies
+one iteration every ≈ 9.5 (2-wide issue) + 6 ≈ 15.3 cycles — only ≈1.25 IPC:
+
+```
+cycles per iteration ≈ max( FU limit,            fetch supply )
+1 FU :                  max( 16 vfmacc / 1 = 16,  9.5 + ~6 ≈ 15.3 )  → 16.3 measured
+2 FU :                  max( 16 vfmacc / 2 =  8,  ≈ 15.3 )           → 15.3 measured
+```
+
+Decode is not the limiter: it is 2-wide and decomposes several macro-ops
+per cycle (`src/cpu/minor/decode.cc`). Neither is `executeIssueLimit=2` on
+its own — it would allow 9.5 cycles per iteration.
+
+**Front-end knobs** (sim config, default = stock, no effect on other
+results): `MINOR_FETCH_LIMIT` sets `fetch1FetchLimit`, `MINOR_ICACHE_LAT`
+sets the I-cache tag/data/response latency (each).
+
+Results (gem5 MinorCPU, `src/fmacc.c` x16, ITERS=10000, vl=8, FP64; all
+`result[0] == total_ops`):
+
+| front end | 1 FU mcycle | 2 FU mcycle | 2nd-FU gain | 2 FU cycles/vfmacc |
+|---|---:|---:|---:|---:|
+| stock (fetch limit 1, I-cache 2/2/2) | 10,170 | 9,534 | 1.07× | 0.95 |
+| `MINOR_FETCH_LIMIT=4` | 10,122 | 8,238 | 1.23× | 0.82 |
+| `MINOR_ICACHE_LAT=1` | — | 8,273 | — | 0.83 |
+| both | — | 7,608 | 1.34× | 0.76 |
+
+- With **1 FU**, a faster front end changes nothing (10,170 → 10,122): the FU
+  binds.
+- With **2 FUs**, it helps a lot: fetch binds.
+
+**x32 unroll** (scratch copy of `src/fmacc.c` with the 16-`vfmacc` block
+duplicated and `i += 32`; 35 instructions per iteration, half the taken
+branches per `vfmacc`; 10,016 `vfmacc` total):
+
+| front end | 1 FU mcycle | 2 FU mcycle | 2nd-FU gain | 2 FU cycles/vfmacc |
+|---|---:|---:|---:|---:|
+| stock | 10,215 | 7,405 | **1.38×** | 0.74 |
+| `MINOR_FETCH_LIMIT=4` | — | 6,686 | — | 0.67 |
+| both knobs | — | 6,368 | 1.60× | 0.64 |
+
+Halving the taken branches per `vfmacc` makes the 2nd FU worth 1.38×
+instead of 1.07× even on the stock front end. With both knobs, about
+**2.8 cycles per iteration** remain above the 2-issue ideal (x16: 12.2 vs
+9.5; x32: 20.3 vs 17.5) — a fixed per-iteration cost, i.e. the taken-branch
+redirect itself (Fetch2 predicts → Fetch1 refetches → new line forwarded to
+Fetch2).
+
+Reproduce (from `gemm/`):
+
+```sh
+C=sim_config/gem5_riscv_demo_riscv_baremetal_semihost_minor.py
+MINOR_FLOAT_FU_COUNT=2 gem5.opt $C test/fmacc_riscv
+MINOR_FLOAT_FU_COUNT=2 MINOR_FETCH_LIMIT=4 MINOR_ICACHE_LAT=1 gem5.opt $C test/fmacc_riscv
+```
+
+So reaching 32 GFLOP/s on MinorCPU needs more FloatSimd FUs **and** a front
+end that keeps up — more line fetches in flight, a faster I-cache, or fewer
+taken branches per `vfmacc` (larger unroll). More FUs alone are capped by
+fetch at ≈1.05 `vfmacc`/cycle on the stock config.
 
 ## FP16: shorter elements, same instruction, more FLOPs/cycle
 
