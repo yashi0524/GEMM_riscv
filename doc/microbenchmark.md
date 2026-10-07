@@ -294,9 +294,80 @@ class MinorDefaultFUPool(MinorFUPool):
 `executeIssueLimit=2` lets the pipeline issue 2 instructions per cycle
 *total*, but each instruction needs a distinct FU slot to issue into — with
 only one FloatSimd FU, at most one `vfmacc` can issue per cycle no matter how
-wide the front end is. The second issue slot each cycle goes to something
-else (e.g. the loop's `addi`/branch, via an IntFU). That's exactly the 1/cycle
-ceiling the x16 result approached (16.0 GFLOP/s theoretical, 15.73 achieved).
+wide the front end is. The second issue slot is only used when the next
+instruction in program order needs a different FU (e.g. the loop's
+`addi`/branch, via an IntFU) — see the issue-slot view below. That's exactly
+the 1/cycle ceiling the x16 result approached (16.0 GFLOP/s theoretical,
+15.73 achieved).
+
+### Issue-slot view: why two `vfmacc` can't issue in the same cycle
+
+Dual-issue means *up to* 2 instructions per cycle. MinorCPU issues the
+second one only if, in that same cycle, all three hold:
+
+1. **Operands ready** — the scoreboard shows its source registers available.
+2. **A free FU can accept it** — the two instructions need two different
+   FUs capable of executing them.
+3. **Everything older has issued** — issue is in program order; once one
+   instruction can't issue, nothing behind it issues that cycle.
+
+The serial chain (timelines A, B) fails rule 1: `vfmacc #2` needs `#1`'s
+result, so no issue width helps. The x16 loop (timeline C) has independent
+accumulators, so it passes rule 1 but fails rule 2, which then triggers
+rule 3: the one FloatSimd FU is pipelined with `issueLat = 1`, so many
+`vfmacc`s can be *in flight* inside it but only one can *enter* per cycle.
+The `MinorExecute` trace shows it directly (branch-free chain,
+`ITERS=32`, `MINOR_SIMD_OPLAT=1`, so the dependency is already satisfied
+and only the FU is in the way):
+
+```
+58242000: Issuing inst: pc 0x10484 (vfmacc_vv_micro) into FU 4
+58242000: Trying to issue inst: pc 0x10488 (vfmacc_vv_micro) to FU: 4
+58242000: Can't issue as FU: 4 is already busy        <- 2nd slot, same cycle
+58242000: Didn't issue inst: pc 0x10488              <- in-order: issue stops here this cycle
+```
+
+What the two issue slots do per cycle in the x16 loop (program order from
+the disassembly: `vc0 … vc14, addi, srliw, vc15, bltu`):
+
+```
+1 FloatSimd FU (stock):
+cycle   slot 0            slot 1
+0       vfmacc vc0        vfmacc vc1  x FU busy -> stop (in-order)
+1       vfmacc vc1        vfmacc vc2  x
+2       vfmacc vc2        vfmacc vc3  x
+ …      …                 …
+14      vfmacc vc14       addi        ok (IntFU, a different unit)
+15      srliw             vfmacc vc15 ok
+16      bltu              …
+-> ~16 cycles per 19 instructions; the 2nd slot is mostly idle
+   (measured 16.3 cycles/iteration, IPC 1.17)
+
+2 FloatSimd FUs (MINOR_FLOAT_FU_COUNT=2), if the front end kept up:
+cycle   slot 0            slot 1
+0       vfmacc vc0 (FU A) vfmacc vc1 (FU B) ok
+1       vfmacc vc2 (FU A) vfmacc vc3 (FU B) ok
+ …
+7       vfmacc vc14       addi
+8       srliw             vfmacc vc15
+9       bltu
+-> ~9.5 cycles/iteration in principle
+```
+
+With 2 FUs the `vfmacc`s really do pair up, but the measured time is
+≈15.3 cycles/iteration, not 9.5: the front end delivers only one iteration
+about every 15 cycles (see
+[Why the 2nd FU barely helps](#why-the-2nd-fu-barely-helps-the-front-end-is-almost-as-slow-as-1-fu)).
+
+| case | what stops a 2nd `vfmacc` issuing in the same cycle |
+|---|---|
+| serial chain (A, B) | data dependency: it needs the previous result |
+| x16, 1 FU (C) | structural: one FloatSimd FU accepts one instruction per cycle, and in-order issue stops behind it |
+| x16, 2 FUs | nothing in Execute: they dual-issue, but the front end can't supply them fast enough |
+
+Dual-issue width caps *total* instructions per cycle; two `vfmacc`s issue
+together only with two FloatSimd FUs, independent operands, and a front end
+that delivers them both in time.
 
 To test this, we added a diagnostic knob to
 `sim_config/gem5_riscv_demo_riscv_baremetal_semihost_minor.py`
