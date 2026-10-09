@@ -434,3 +434,98 @@ Caveats: the DRAM slope is the theoretical peak, not measured; the L1 slope is
 load-only (the kernels also store); write-backs include a few stack lines
 besides C; FMA latency is opLat=6, whereas the sweep above used the stock
 opLat=1.
+
+## In-order superscalar core (MinorCPU-based config)
+
+Same gemm kernels on an in-order, dual-issue core with a separate vector
+pipe — the common shape of in-order RVV 1.0 application cores (dual-issue
+scalar pipeline + decoupled vector unit with DLEN < VLEN). Config:
+`sim_config/gem5_riscv_demo_riscv_baremetal_semihost_minor_superscalar.py`,
+built on MinorCPU with the same system / caches / memory as the Minor config.
+
+| feature | setting |
+|---|---|
+| width | 2-wide decode / issue / commit, in-order (Minor defaults) |
+| front end | 2 I-cache line fetches in flight, 1-cycle I-cache — approximates fetch-stage branch prediction (taken branch ~2.8 cycles instead of ~6, see [microbenchmark.md](microbenchmark.md)) |
+| scalar FP | own FU (`Float*` op classes), opLat 6 |
+| vector | own FU (`Simd*` / `Matrix*`), opLat 6, `issueLat` = VLEN/DLEN; `VPU_DLEN=256` by default → 2 cycles per vector register |
+| `vsetvli` | on the integer ALUs (scalar pipeline) |
+| knobs | `VPU_DLEN`, `VPU_OPLAT`, `SCALAR_FP_OPLAT` |
+
+Sanity check: `fmacc` x16 (FP64) measures **2.01 cycles/`vfmacc`** = VLEN/DLEN,
+i.e. 7.96 GFLOP/s = 4 FP64 FMAs per cycle on a 256-bit datapath.
+
+Not modelled: branch prediction proper still happens in Fetch2 (only the
+bubble is shortened), no lane-specific pairing rules, no vector instruction
+queue / chaining, and vector loads/stores still go through the single Mem FU
+at one per cycle rather than a DLEN-limited vector load/store unit.
+
+### Results (2026-10-08)
+
+Source: `src/gemm.c` as of commit `97c3b6c` (includes the `vsetvlmax` change),
+compressed instructions (`rv64gcv` / `rv64gcv_zvfh`). FP64: `M=N=K=16`,
+`-force-vector-width=8`; FP16: `M=16 N=64 K=16`, `-force-vector-width=32
+-force-vector-interleave=1`. Cold = `WARMUP_RUNS=0`, warm = `WARMUP_RUNS=1`
+(second call timed). O3 uses `O3_SIMD_FMA_OPLAT=6`. mcycle, scalar / opt /
+blocked; every run PASSes both correctness checks.
+
+| config | FP64 cold | FP64 warm | FP16 cold | FP16 warm |
+|---|---|---|---|---|
+| Minor stock (vector 1 cycle/op ≙ DLEN 512) | 9,633 / 5,668 / 4,290 | 9,131 / 4,979 / 3,538 | 21,433 / 9,357 / 7,626 | 20,425 / 8,622 / 6,934 |
+| superscalar, `VPU_DLEN=512` | 8,848 / 5,332 / 3,779 | 8,418 / 4,903 / 3,452 | 19,703 / 8,985 / 7,318 | 19,048 / 8,552 / 6,804 |
+| **superscalar, `VPU_DLEN=256`** (default) | 9,118 / 6,059 / 4,289 | 8,690 / 5,639 / 3,970 | 22,521 / 9,703 / 7,581 | 21,864 / 9,288 / 7,308 |
+| O3, opLat 6 (reference) | 2,905 / 1,865 / 1,784 | 2,511 / 1,306 / 879 | 5,927 / 2,121 / 2,149 | 5,349 / 1,488 / 1,139 |
+
+GFLOP/s, warm (FP64 8,192 FLOP; FP16 32,768 FLOP per call):
+
+| config | FP64 scalar / opt / blocked | FP16 scalar / opt / blocked |
+|---|---|---|
+| Minor stock | 0.90 / 1.65 / 2.32 | 1.60 / 3.80 / 4.73 |
+| superscalar, DLEN 512 | 0.97 / 1.67 / 2.37 | 1.72 / 3.83 / 4.82 |
+| superscalar, DLEN 256 | 0.94 / 1.45 / 2.06 | 1.50 / 3.53 / 4.48 |
+| O3, opLat 6 | 3.26 / 6.27 / 9.32 | 6.13 / 22.02 / 28.77 |
+
+IPC, FP64 warm (scalar / opt / blocked): Minor 0.96 / 0.92 / 0.74 ·
+superscalar DLEN 512 1.04 / 0.94 / 0.76 · superscalar DLEN 256 1.01 / 0.82 / 0.66
+· **O3 3.50 / 3.52 / 2.99**.
+
+- **The faster front end and split pipes help gemm only 1–12%**
+  (superscalar DLEN 512 vs Minor stock). The large front-end win seen on
+  `fmacc` doesn't carry over: gemm's loop bodies are long, so taken branches
+  are rare per instruction.
+- **A 256-bit vector datapath costs opt/blocked 6–15%** vs DLEN 512. Under
+  in-order issue a busy vector pipe stalls everything behind it: in blocked,
+  16 back-to-back `vfmacc`s take 32 cycles per inner iteration instead of 16.
+- **Dependency stalls are the real limit.** IPC stays below 1 on every
+  in-order variant, so the second issue slot is mostly empty: each iteration
+  is a chain of load → `fmul.d` (alpha scaling) → `vfmacc`, and vector load →
+  `vfmacc`, which an in-order core must wait out. O3 reorders around them
+  (IPC 3–3.5) and is 3–8× faster.
+- **Implication:** on an in-order superscalar core, software scheduling
+  matters far more than on O3. Hoisting `alpha` out of the inner loop (TODO
+  in [perf_analysis_O3CPU.md](perf_analysis_O3CPU.md)) and interleaving loads
+  ahead of their uses target exactly these stalls; compiling with an
+  in-order scheduling model (e.g. clang `-mcpu=sifive-x280`) is worth trying.
+
+Reproduce (from `gemm/`; `$GEM5` = the gem5 `build/RISCV/gem5.opt`):
+
+```sh
+source script/0_env_var_setup.sh
+FP64="-DM=16 -Dtarget_float=double -mllvm -force-vector-width=8"
+FP16="-DM=16 -DN=64 -DK=16 -Dtarget_float=_Float16 -mllvm -force-vector-width=32 -mllvm -force-vector-interleave=1"
+for w in 0 1; do
+  make -B test/gemm_riscv BENCH_EXTRA_FLAGS="$FP64 -DWARMUP_RUNS=$w"
+  cp test/gemm_riscv test/gemm_di_fp64_w${w}_riscv
+  make -B test/gemm_riscv MARCH=rv64gcv_zvfh BENCH_EXTRA_FLAGS="$FP16 -DWARMUP_RUNS=$w"
+  cp test/gemm_riscv test/gemm_di_fp16_w${w}_riscv
+done
+make -B gemm M=16          # restore the default test/gemm_riscv
+
+SC=sim_config/gem5_riscv_demo_riscv_baremetal_semihost
+for b in fp64_w0 fp64_w1 fp16_w0 fp16_w1; do
+  $GEM5 -d test/m5out_di_minor_$b    ${SC}_minor.py             test/gemm_di_${b}_riscv
+  $GEM5 -d test/m5out_di_dual_$b     ${SC}_minor_superscalar.py test/gemm_di_${b}_riscv
+  VPU_DLEN=512 $GEM5 -d test/m5out_di_dual512_$b ${SC}_minor_superscalar.py test/gemm_di_${b}_riscv
+  O3_SIMD_FMA_OPLAT=6 $GEM5 -d test/m5out_di_o3_$b ${SC}_o3.py test/gemm_di_${b}_riscv
+done
+```
